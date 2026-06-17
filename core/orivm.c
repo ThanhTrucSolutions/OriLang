@@ -498,10 +498,13 @@ static Value run(VM* vm){
 static double argnum(Value* a, int argc, int i){ if(i>=argc||a[i].t!=V_NUM) rt_error("expected a number"); return a[i].u.num; }
 static Str* argstr(Value* a, int argc, int i){ if(i>=argc||a[i].t!=V_STR) rt_error("expected a string"); return a[i].u.s; }
 
+void (*ori_say_hook)(const char* line) = NULL;   // set by embedders (e.g. Android JNI)
 static Value h_say(VM* vm, Value* a, int argc){
     Sb b; sb_init(&b);
     for(int i=0;i<argc;i++){ if(i) sb_putc(&b,' '); val_display(&b,a[i]); }
-    fwrite(b.d,1,b.len,stdout); fputc('\n',stdout); free(b.d); return vnil();
+    if(ori_say_hook){ ori_say_hook(b.d); }
+    else { fwrite(b.d,1,b.len,stdout); fputc('\n',stdout); }
+    free(b.d); return vnil();
 }
 static Value h_str(VM* vm, Value* a, int argc){ if(argc==0) return vstr(""); char* s=val_cstr(a[0]); Value v=vstr(s); free(s); return v; }
 static Value h_num(VM* vm, Value* a, int argc){
@@ -605,40 +608,46 @@ static void disassemble(Program* pr){
     }
 }
 
-int main(int argc, char** argv){
-    if(argc<2){ fprintf(stderr,"usage: orivm <file.orx|file.orb> [args...]\n       orivm dis <file>\n"); return 1; }
-    build_perm();
-    if(strcmp(argv[1],"pack")==0){
-        if(argc<4){ fprintf(stderr,"usage: orivm pack <in.orb> <out.orx>\n"); return 1; }
-        return do_pack(argv[2],argv[3]);
-    }
-    int disMode = (strcmp(argv[1],"dis")==0);
-    const char* path = disMode ? argv[2] : argv[1];
-    size_t n; uint8_t* img=read_all(path,&n);
-    Program* prog;
-    if(n>=4 && memcmp(img,"ORIX",4)==0) prog=load_orx(img,n);
-    else if(n>=4 && memcmp(img,"ORB1",4)==0) prog=load_orb(img,n);
-    else die("unknown image format (expected .orx or .orb)");
-    if(disMode){ disassemble(prog); return 0; }
-
+static Program* ori_load(const uint8_t* img, size_t n){
+    if(n>=4 && memcmp(img,"ORIX",4)==0) return load_orx(img,n);
+    if(n>=4 && memcmp(img,"ORB1",4)==0) return load_orb(img,n);
+    die("unknown image format (expected .orx or .orb)"); return NULL;
+}
+static int ori_setup_run(Program* prog, int pargc, char** pargv){
     VM* vm=&gvm; memset(vm,0,sizeof *vm);
     vm->prog=prog;
     vm->stackCap=256; vm->stack=xmalloc(sizeof(Value)*vm->stackCap); vm->sp=0;
     vm->frameCap=64; vm->frames=xmalloc(sizeof(Frame)*vm->frameCap); vm->fp=0;
-    vm->pargc=argc-2; vm->pargv=argv+2;
+    vm->pargc=pargc; vm->pargv=pargv;
     register_hosts(vm);
     for(int i=0;i<prog->funcCount;i++){ if(strcmp(prog->funcs[i].name,"__main__")!=0) g_set(vm,prog->funcs[i].name,vfunc(i)); }
-
     push_frame(vm,prog->mainIndex,NULL,0);
     run(vm);
     return 0;
 }
+// Load an image into the persistent VM (gvm) and run its __main__ once.
+// After this, ori_call_str can drive the program from GUI / JNI / JS events.
+int ori_boot(const char* path, int pargc, char** pargv){
+    build_perm();
+    size_t n; uint8_t* img=read_all(path,&n);
+    return ori_setup_run(ori_load(img,n), pargc, pargv);
+}
+// Same, but from an in-memory image (for Android JNI / embedding).
+int ori_boot_mem(const uint8_t* img, size_t n){
+    build_perm();
+    return ori_setup_run(ori_load(img,n), 0, NULL);
+}
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-// Call an Ori global function (taking one string arg) and return its string
-// result. Used by the web GUI to drive a persistent Ori "model" from JS events.
-EMSCRIPTEN_KEEPALIVE
+#define ORI_EXPORT EMSCRIPTEN_KEEPALIVE
+#else
+#define ORI_EXPORT
+#endif
+
+// Call an Ori global function (taking one string arg); return its string result.
+// Drives a persistent Ori "model" from GUI (Win32 / Android JNI) or web (JS) events.
+ORI_EXPORT
 char* ori_call_str(const char* fname, const char* arg){
     Value f;
     if(!g_get(&gvm, fname, &f) || f.t!=V_FUNC) return dupstr("");
@@ -647,5 +656,24 @@ char* ori_call_str(const char* fname, const char* arg){
     Value r = run(&gvm);
     if(r.t==V_STR) return dupstr(r.u.s->d);
     return val_cstr(r);
+}
+
+#ifndef ORI_AS_LIB
+int main(int argc, char** argv){
+    if(argc<2){ fprintf(stderr,"usage: orivm <file.orx|file.orb> [args...]\n       orivm dis <file>\n"); return 1; }
+    build_perm();
+    if(strcmp(argv[1],"pack")==0){
+        if(argc<4){ fprintf(stderr,"usage: orivm pack <in.orb> <out.orx>\n"); return 1; }
+        return do_pack(argv[2],argv[3]);
+    }
+    if(strcmp(argv[1],"dis")==0){
+        size_t n; uint8_t* img=read_all(argv[2],&n);
+        Program* prog;
+        if(n>=4 && memcmp(img,"ORIX",4)==0) prog=load_orx(img,n);
+        else if(n>=4 && memcmp(img,"ORB1",4)==0) prog=load_orb(img,n);
+        else die("unknown image format");
+        disassemble(prog); return 0;
+    }
+    return ori_boot(argv[1], argc-2, argv+2);
 }
 #endif

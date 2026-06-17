@@ -1,0 +1,14 @@
+// The Ori program bundled in the Android APK (assets/app.orb).
+fold fib n {
+    when n < 2 { give n }
+    give fib (n - 1) + fib (n - 2)
+}
+
+say "Ori VM running on Android!"
+say "(the same C VM as desktop, cross-compiled to native arm64/x86_64)"
+say ""
+hold i = 0
+loop i < 15 {
+    say ("fib " + str i + " = " + str (fib i))
+    i = i + 1
+}

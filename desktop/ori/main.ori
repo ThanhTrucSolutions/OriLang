@@ -1,0 +1,45 @@
+// desktop/ori/main.ori — the model for the native Windows todo app.
+// The Win32 host (platforms/win/oriwin.c) calls add/toggle/remove/view and
+// renders the list. Same paren-free Ori as everywhere else.
+
+hold todos = []      // each item is [doneFlag, text]
+
+fold view s {
+    hold out = ""
+    hold i = 0
+    loop i < len todos {
+        hold item = todos[i]
+        out = out + str i + "|" + str (item[0]) + "|" + item[1] + chr 10
+        i = i + 1
+    }
+    give out
+}
+
+fold add text {
+    push (todos, [0, text])
+    give view ""
+}
+
+fold toggle s {
+    hold idx = num s
+    when idx >= 0 && idx < len todos {
+        hold item = todos[idx]
+        when item[0] == 0 { item[0] = 1 } else { item[0] = 0 }
+    }
+    give view ""
+}
+
+fold remove s {
+    hold idx = num s
+    hold kept = []
+    hold i = 0
+    loop i < len todos {
+        when i != idx { push (kept, todos[i]) }
+        i = i + 1
+    }
+    todos = kept
+    give view ""
+}
+
+add "Learn the Ori language"
+add "Build a native Windows app"
