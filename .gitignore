@@ -9,3 +9,8 @@ obj/
 # Local screenshots / scratch
 window_after.png
 screenshot_*.png
+android_*.png
+
+# Android packages (built under bin/, but ignore strays too)
+*.apk
+*.aab
