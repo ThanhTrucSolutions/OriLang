@@ -1,0 +1,7 @@
+name: app
+version: 1.0.0
+entry: ori/main.ori
+
+# Everything this project needs is declared here.
+# `ori run` auto-installs the toolchain and builds the native VM on first use.
+dependencies:
