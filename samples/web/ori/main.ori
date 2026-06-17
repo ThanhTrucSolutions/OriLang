@@ -66,7 +66,10 @@ fold render {
 }
 
 fold update body {
-    when len(body) == 0 { status = "Error: could not load prices."; give render() }
+    when len(body) == 0 {
+        status = "Error: could not load prices."
+        give render()
+    }
     coins = []
     push(coins, ["Bitcoin",  "BTC", find_usd(body, "bitcoin")])
     push(coins, ["Ethereum", "ETH", find_usd(body, "ethereum")])
@@ -77,7 +80,10 @@ fold update body {
 }
 
 fold dispatch ev arg {
-    when ev == "refresh" { status = "Refreshing..."; give render() }
+    when ev == "refresh" {
+        status = "Refreshing..."
+        give render()
+    }
     when ev == "update"  { give update(arg) }
     give render()
 }

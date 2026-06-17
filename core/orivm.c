@@ -26,8 +26,12 @@
 #else
 #include <unistd.h>
 #include <sys/wait.h>
-#include <glob.h>
 #include <limits.h>
+#include <dirent.h>
+#include <fnmatch.h>
+#ifndef __ANDROID__
+#include <glob.h>
+#endif
 #ifdef __APPLE__
 #include <TargetConditionals.h>
 #endif
@@ -183,13 +187,18 @@ static void derive(const uint8_t master[32], const uint8_t* salt, int saltLen, c
     sha256(buf,32+saltLen+ll,out); free(buf);
 }
 
-// ---- byte cursor ----
+// ---- byte cursor — all reads bounds-checked to prevent buffer over-read ----
 typedef struct { const uint8_t* p; size_t n, pos; } Cur;
-static int32_t rd_i32(Cur* c){ const uint8_t* b=c->p+c->pos; c->pos+=4;
+static void cur_need(Cur* c, size_t need){
+    if(c->pos + need > c->n) die("malformed bytecode image (truncated read)");
+}
+static int32_t rd_i32(Cur* c){ cur_need(c,4); const uint8_t* b=c->p+c->pos; c->pos+=4;
     return (int32_t)((uint32_t)b[0]|((uint32_t)b[1]<<8)|((uint32_t)b[2]<<16)|((uint32_t)b[3]<<24)); }
-static uint8_t rd_u8(Cur* c){ return c->p[c->pos++]; }
-static double rd_double(Cur* c){ uint64_t u=0; for(int i=0;i<8;i++) u|=((uint64_t)c->p[c->pos++])<<(8*i); double d; memcpy(&d,&u,8); return d; }
-static char* rd_str(Cur* c, int* outLen){ int len=rd_i32(c); char* s=xmalloc(len+1); memcpy(s,c->p+c->pos,len); s[len]=0; c->pos+=len; if(outLen)*outLen=len; return s; }
+static uint8_t rd_u8(Cur* c){ cur_need(c,1); return c->p[c->pos++]; }
+static double rd_double(Cur* c){ cur_need(c,8); uint64_t u=0; for(int i=0;i<8;i++) u|=((uint64_t)c->p[c->pos++])<<(8*i); double d; memcpy(&d,&u,8); return d; }
+static char* rd_str(Cur* c, int* outLen){ int len=rd_i32(c);
+    if(len<0||(size_t)len>c->n-c->pos) die("malformed bytecode image (bad string length)");
+    char* s=xmalloc((size_t)len+1); memcpy(s,c->p+c->pos,len); s[len]=0; c->pos+=len; if(outLen)*outLen=len; return s; }
 
 static void build_perm_seeded(uint32_t seed, uint8_t perm[256], uint8_t inv[256]){
     for(int i=0;i<256;i++) perm[i]=(uint8_t)i;
@@ -412,6 +421,7 @@ static void push_frame(VM* vm, int fnIndex, Value* args, int argc){
 }
 
 static void do_call(VM* vm, int argc){
+    if(vm->fp >= 2000) rt_error("stack overflow (call depth exceeded 2000)");
     Value* args=xmalloc(sizeof(Value)*(argc>0?argc:1));
     for(int i=argc-1;i>=0;i--) args[i]=pop(vm);
     Value callee=pop(vm);
@@ -422,6 +432,7 @@ static void do_call(VM* vm, int argc){
     } else if(callee.t==V_HOST){
         push(vm, vm->hostFns[callee.u.i](vm,args,argc));
     } else rt_error("value is not callable");
+    free(args);
 }
 
 static Value bin_add(Value a, Value b){
@@ -457,7 +468,7 @@ static Value run(VM* vm){
                 case OP_ADD: { Value b=pop(vm),a=pop(vm); push(vm,bin_add(a,b)); break; }
                 case OP_SUB: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a-b)); break; }
                 case OP_MUL: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a*b)); break; }
-                case OP_DIV: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a/b)); break; }
+                case OP_DIV: { double b=need_num(pop(vm)),a=need_num(pop(vm)); if(b==0) rt_error("division by zero"); push(vm,vnum(a/b)); break; }
                 case OP_MOD: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(fmod(a,b))); break; }
                 case OP_NEG: { double a=need_num(pop(vm)); push(vm,vnum(-a)); break; }
                 case OP_EQ: { Value b=pop(vm),a=pop(vm); push(vm,vbool(val_eq(a,b))); break; }
@@ -663,6 +674,27 @@ static Value h_glob(VM* vm, Value* a, int argc){
         char full[1024]; snprintf(full,sizeof full,"%s%s",dir,fd.name);
         arr_push(arr.u.a, vstr(full));
     } } while(_findnext(h,&fd)==0); _findclose(h); }
+#elif defined(__ANDROID__)
+    // Android Bionic < API 28 has no glob(3) — use opendir + fnmatch instead
+    const char* pat=a[0].u.s->d;
+    char dir[1024]=".";
+    const char* name_pat;
+    const char* slash=strrchr(pat,'/');
+    if(slash){ int dl=(int)(slash-pat)+1; if(dl>1022)dl=1022; memcpy(dir,pat,dl); dir[dl]=0; name_pat=slash+1; }
+    else { name_pat=pat; }
+    DIR* dp=opendir(dir);
+    if(dp){ struct dirent* de;
+        while((de=readdir(dp))!=NULL){
+            if(strcmp(de->d_name,".")==0||strcmp(de->d_name,"..")==0) continue;
+            if(fnmatch(name_pat,de->d_name,0)==0){
+                char full[1024];
+                if(strcmp(dir,".")!=0) snprintf(full,sizeof full,"%s/%s",dir,de->d_name);
+                else strncpy(full,de->d_name,sizeof full-1);
+                arr_push(arr.u.a,vstr(full));
+            }
+        }
+        closedir(dp);
+    }
 #else
     glob_t g;
     if(glob(a[0].u.s->d,0,NULL,&g)==0){
@@ -681,9 +713,20 @@ static Value h_abspath(VM* vm, Value* a, int argc){
 #endif
     return a[0];
 }
+// Reject URLs containing shell metacharacters to prevent injection via popen.
+static int url_shell_safe(const char* url){
+    for(const char* p=url;*p;p++){
+        char c=*p;
+        if(c=='\''||c=='"'||c=='`'||c=='$'||c=='\\'||c=='\n'||c=='\r'||
+           c==';'||c=='&'||c=='|'||c=='('||c==')'||c=='{'||c=='}'||c=='<'||c=='>')
+            return 0;
+    }
+    return 1;
+}
 static Value h_http_get(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vstr("");
     const char* url=a[0].u.s->d;
+    if(!url_shell_safe(url)){ fprintf(stderr,"[Ori] http_get: URL contains unsafe characters\n"); return vstr(""); }
     char cmd[2048];
 #ifdef _WIN32
     snprintf(cmd,sizeof cmd,"curl -sL --max-time 8 --connect-timeout 5 \"%s\" 2>nul",url);
@@ -722,7 +765,7 @@ static Value h_mtime(VM* vm, Value* a, int argc){
 #endif
 }
 static Value h_sleep_ms(VM* vm, Value* a, int argc){
-    int ms=argc>0?(int)a[0].u.num:0;
+    int ms=argc>0&&a[0].t==V_NUM?(int)a[0].u.num:0;
 #ifdef _WIN32
     Sleep((DWORD)(ms<0?0:ms));
 #else
