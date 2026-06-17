@@ -1,524 +1,181 @@
-# Ori — a programming language with its own VM
+# Ori — a programming language with its own native VM
 
-**Ori** is a small programming language (designed from scratch) that runs on the
-**Ori VM** — a stack-based bytecode virtual machine written in C#/.NET 9. Source
-files (`.ori`) are compiled into **multi-layer encrypted** `.orx` images that are
-hard to reverse engineer. The exact same VM and `.orx` format run on **Windows,
-Android, and the web (WebAssembly)** — see sections 7–9.
-
-It is also **self-hosting in spirit**: a complete Ori interpreter
-([examples/ori_in_ori.ori](examples/ori_in_ori.ori)) is written *in Ori* and runs
-on the Ori VM — Ori running Ori. See section 4.
+**Ori** is a small programming language with its own **native virtual machine
+written in C**, a **compiler written in Ori itself** (self-hosting), and a
+**Flutter-style `ori` CLI**. There is no .NET and no other runtime — just C and
+Ori.
 
 ```
-  .ori  (source)  ──►  Compiler  ──►  bytecode  ──►  Container  ──►  .orx (encrypted)
-                                                                        │
-                                          Ori VM  ◄── decrypt + verify HMAC ◄┘
+   .ori  ──►  oric (the compiler, written in Ori)  ──►  .orb  ──►  orivm (C VM)
+   source        runs on ▲ the C VM                      bytecode      runs it
+                                              ori build --release ──►  .orx (encrypted)
 ```
 
-Ori has its own keyword flavour (a nod to *ori-gami* — "folding" logic into shapes):
+- **Core = C.** [core/orivm.c](core/orivm.c) is a stack-based bytecode VM (values,
+  arrays, recursion, host built-ins) with from-scratch SHA-256/HMAC and ChaCha20.
+- **Compiler = Ori.** [tooling/oric.ori](tooling/oric.ori) is a full
+  tokenizer + parser + bytecode emitter **written in Ori**. It compiles *itself*
+  (verified by a byte-exact fixpoint) and ships pre-built as `tooling/oric.orb`.
+- **One VM, every platform.** The same C VM runs natively on **Windows**, in the
+  **browser** (compiled to **WebAssembly**), and on **Android** (cross-compiled
+  with the NDK).
+- **Hardened images.** `ori build --release` produces an encrypted `.orx` whose
+  **opcode mapping is randomized on every build** (ChaCha20 + HMAC + per-build
+  opcode permutation + operand whitening).
 
-| Concept | Ori | Familiar equivalent |
-|---|---|---|
-| Declare a variable | `hold` | `let` / `var` |
-| Define a function | `fold` | `fn` / `def` / `function` |
-| Return | `give` | `return` |
-| Branch | `when` … `else` | `if` … `else` |
-| Chained branch | `else when` | `else if` |
-| Loop | `loop` | `while` |
-| True / False | `yes` / `no` | `true` / `false` |
-| Empty | `none` | `null` / `nil` |
-| Print | `say` (or `print`) | `print` |
+A project is just an `ori/` folder and a `meta` file.
+
+Keyword flavour (a nod to *ori-gami* — folding logic into shapes): `hold` (let),
+`fold` (function), `give` (return), `when`/`else`/`else when`, `loop` (while),
+`yes`/`no` (bool), `none` (nil), `say` (print).
 
 ---
 
-## ⚡ Native toolchain (C core + Ori-written compiler + `ori` CLI)
+## 1. Quick start (Flutter-style)
 
-Ori also has a **native** path: the VM core is rewritten in **C**
-([core/orivm.c](core/orivm.c)), the compiler is written **in Ori**
-([tooling/oric.ori](tooling/oric.ori)) and runs on that C VM, and a Flutter-style
-**`ori`** CLI ties it together. A project is just an `ori/` folder and a `meta`
-file:
+Requires a **C compiler** (MSVC / Visual Studio C++ tools) the first time, so the
+VM can be built. Then:
 
 ```powershell
-ori create myapp     # scaffolds  myapp/ori/main.ori  +  myapp/meta
-ori run   myapp      # auto-builds the C VM, compiles with the Ori compiler, runs
-ori build myapp      # -> myapp/build/app.orb
-ori doctor           # install/build everything the toolchain needs
+.\ori.cmd create myapp            # scaffolds  myapp/ori/main.ori  +  myapp/meta
+.\ori.cmd run   myapp             # auto-builds the C VM, compiles, runs
+.\ori.cmd dev   myapp             # hot reload: edit ori/main.ori, it re-runs
+.\ori.cmd build myapp -Release    # -> myapp/build/app.orx (encrypted)
+.\ori.cmd doctor                  # install/build what the toolchain needs
 ```
 
-`ori run` builds the native VM on first use (auto-install), then compiles
-`ori/main.ori` to bytecode **using the Ori-written compiler running on the C VM**,
-and runs the result. Full details: **[docs/TOOLCHAIN.md](docs/TOOLCHAIN.md)**.
+(`ori.cmd` is a shim for `ori.ps1`; put the repo on `PATH` to type just `ori`.)
 
-The original **.NET** implementation (`src/OriLang`, `oric`) remains as the
-bootstrap compiler and powers the Windows / Android / Web demos below.
-
----
-
-## 1. Requirements & build
-
-Requires **.NET SDK 9+**.
-
-```powershell
-./build.ps1
-```
-
-or build each project individually:
-
-```powershell
-dotnet build src/oric/oric.csproj       -c Release   # CLI
-dotnet build src/OriDemo/OriDemo.csproj  -c Release   # GUI demo
-```
-
-After building:
-
-- CLI: `src\oric\bin\Release\net9.0\oric.exe`
-- GUI: `src\OriDemo\bin\Release\net9.0-windows\OriDemo.exe`
-
----
-
-## 2. The `oric` command-line tool
+A project's structure is exactly:
 
 ```
-oric run   <file.ori|file.orx>     run source directly, or a compiled image
-oric build <in.ori> [-o out.orx]   compile -> encrypted .orx image
-oric dump  <file.ori>              show bytecode (disassembly)
-oric peek  <file.orx>              inspect an .orx header (proves it's encrypted)
-oric version                       print the version
-```
-
-Example:
-
-```powershell
-$oric = "src\oric\bin\Release\net9.0\oric.exe"
-& $oric run   examples\hello.ori
-& $oric run   examples\arrays.ori
-& $oric run   examples\ori_in_ori.ori     # Ori interpreting Ori
-& $oric build examples\hello.ori -o hello.orx
-& $oric peek  hello.orx
-& $oric run   hello.orx                    # identical result to running the source
+myapp/
+  ori/main.ori     # your code
+  meta             # name / version / entry / platform / dependencies
 ```
 
 ---
 
-## 3. The Ori language guide
+## 2. Platforms
 
-### 3.1 Programs & statements
+| Platform | `meta` line | How it runs | Hot reload |
+|---|---|---|---|
+| Windows (native) | `platform: windows` | `orivm.exe app.orb` | `ori dev` |
+| Web | `platform: web` | C VM compiled to **WASM**, runs `.orb` in the browser | `ori run` serves with live reload |
+| Android | `platform: android` | VM cross-compiled (NDK) to **arm64** + `.orb` | — |
 
-A program is a sequence of statements. Each statement ends with a **newline**
-(no semicolons). Two statements may **not** share a line. Top-level statements
-(outside any function) run in order from top to bottom — that is the entry point.
+Examples in this repo: [app/](app) (windows) and [app-web/](app-web) (web).
+
+```powershell
+.\ori.cmd run app          # native console
+.\ori.cmd run app-web      # opens a dev server at http://127.0.0.1:5151 (WASM + hot reload)
+.\ori.cmd build app-android -Platform android   # arm64 VM + app.orb (push via adb)
+```
+
+The web runtime (`tooling/web/orivm.js` + `orivm.wasm`) is the C VM built with
+Emscripten and ships prebuilt; the page recompiles `ori/main.ori` on save and
+re-runs automatically.
+
+---
+
+## 3. The Ori language
 
 ```ori
-say("line 1")
-say("line 2")
-```
-
-### 3.2 Comments
-
-```ori
-// single-line comment
-# also a single-line comment
-/* multi-line
-   comment */
-```
-
-### 3.3 Data types
-
-| Type | Example | Notes |
-|---|---|---|
-| number | `42`, `3.14`, `1e3` | 64-bit floating point (double) |
-| string | `"hello"` | supports `\n \t \r \" \\ \0` |
-| bool | `yes`, `no` | |
-| none | `none` | the empty value |
-| function | `fold f(...) {...}` | functions are first-class values |
-| array | `[1, "two", yes]` | dynamic, heterogeneous, reference type |
-
-### 3.4 Variables — `hold`
-
-```ori
-hold x = 10
+// variables, functions (recursion), branching, loops, arrays, strings
 hold name = "Ori"
-hold empty            // no initializer -> defaults to none
-x = x + 1             // reassign (no hold needed)
-```
 
-- `hold` **declares** a new variable; to reassign, just write `name = value`.
-- A variable declared at the top level is **global**; one declared inside a
-  function is **local**.
-
-### 3.5 Functions — `fold` … `give`
-
-```ori
-fold add(a, b) {
-    give a + b
-}
-
-fold greet(name) {
-    give "Hello " + name + "!"
-}
-
-say(add(2, 3))          // 5
-say(greet("Ori"))       // Hello Ori!
-```
-
-- `give` returns a value and ends the function. Without `give`, a function
-  returns `none`.
-- Functions support **recursion**; the call's argument count must match the
-  declared parameter count.
-- Functions are first-class values:
-
-```ori
-fold square(x) { give x * x }
-hold f = square          // assign a function to a variable
-say(f(9))                // 81
-```
-
-### 3.6 Branching — `when` / `else` / `else when`
-
-```ori
-when score >= 90 {
-    say("A")
-} else when score >= 70 {
-    say("B")
-} else {
-    say("C")
-}
-```
-
-Braces `{ }` are **required** for every branch.
-
-### 3.7 Loops — `loop`
-
-`loop <condition> { … }` repeats while the condition is true (like `while`):
-
-```ori
-hold i = 1
-loop i <= 5 {
-    say(i)
-    i = i + 1
-}
-```
-
-### 3.8 Arrays & indexing
-
-Arrays are dynamic, heterogeneous, and passed by reference:
-
-```ori
-hold xs = [10, 20, 30]
-say(xs[1])            // 20  (zero-based)
-xs[1] = 99            // index assignment
-push(xs, 40)          // append; returns the new length
-say(pop(xs))          // 40  (removes & returns the last element)
-say(len(xs))          // 3
-
-hold total = 0
-hold i = 0
-loop i < len(xs) {
-    total = total + xs[i]
-    i = i + 1
-}
-```
-
-Strings can also be indexed (returns a one-character string) and inspected
-character by character with `char_at`, `ord`, `chr`, `substr` — enough to write a
-tokenizer (see section 4). Full demo: [examples/arrays.ori](examples/arrays.ori).
-
-### 3.9 Operators & precedence
-
-From lowest to highest:
-
-| Level | Operators | Associativity |
-|---|---|---|
-| 1 | `=` (assignment) | right |
-| 2 | `\|\|` | left |
-| 3 | `&&` | left |
-| 4 | `==`  `!=` | left |
-| 5 | `<`  `>`  `<=`  `>=` | left |
-| 6 | `+`  `-` | left |
-| 7 | `*`  `/`  `%` | left |
-| 8 | `-x`  `!x` (unary) | right |
-| 9 | `f(...)` (call), `a[i]` (index), `( )` | |
-
-Notes:
-- `+` on strings means **concatenation** (`"x=" + str(3)` → `"x=3"`); if either
-  side is a string, the other side is automatically rendered to a string.
-- `&&` and `||` **short-circuit** and return `yes`/`no`.
-- `!` is logical negation based on truthiness.
-
-### 3.10 Truthiness
-
-Used by `when`, `loop`, `&&`, `||`, `!`:
-
-| Value | Treated as |
-|---|---|
-| `no`, `none`, number `0`, empty string `""` | false |
-| everything else | true |
-
-### 3.11 Built-in functions (standard library)
-
-| Function | Description |
-|---|---|
-| `say(...)` / `print(...)` | print the arguments (space-separated) |
-| `str(x)` | convert to string |
-| `num(s)` | string → number (returns `none` on parse failure) |
-| `len(x)` | length of a string or array |
-| `push(arr, v)` | append `v` to `arr`; returns new length |
-| `pop(arr)` | remove & return the last element |
-| `char_at(s, i)` | the character at index `i` as a 1-char string (`""` if out of range) |
-| `ord(s)` | code point of the first character (`-1` if empty) |
-| `chr(n)` | the 1-char string for code point `n` |
-| `substr(s, start[, count])` | substring |
-| `abs(x)` `floor(x)` `sqrt(x)` | math helpers |
-| `max(...)` `min(...)` | largest / smallest (variadic) |
-| `upper(s)` `lower(s)` | change case |
-| `type(x)` | type name: `"number"`, `"string"`, `"bool"`, `"nil"`, `"function"`, `"array"` |
-
-### 3.12 Scoping
-
-- Names resolve **local first, then global**.
-- Functions and global variables are usable anywhere (even before their
-  declaration, because functions are loaded before execution).
-- Not yet supported: closures capturing outer variables, nested functions,
-  block-scoped locals.
-
-### 3.13 Grammar (summary, EBNF)
-
-```ebnf
-program    = { statement } ;
-statement  = funcDecl | letDecl | whenStmt | loopStmt | giveStmt | exprStmt ;
-funcDecl   = "fold" IDENT "(" [ IDENT { "," IDENT } ] ")" block ;
-letDecl    = "hold" IDENT [ "=" expr ] ;
-whenStmt   = "when" expr block [ "else" ( whenStmt | block ) ] ;
-loopStmt   = "loop" expr block ;
-giveStmt   = "give" [ expr ] ;
-exprStmt   = expr ;
-block      = "{" { statement } "}" ;
-
-expr       = assignment ;
-assignment = ( IDENT | index ) "=" assignment | logicOr ;
-logicOr    = logicAnd { "||" logicAnd } ;
-logicAnd   = equality { "&&" equality } ;
-equality   = comparison { ("==" | "!=") comparison } ;
-comparison = term { ("<" | ">" | "<=" | ">=") term } ;
-term       = factor { ("+" | "-") factor } ;
-factor     = unary  { ("*" | "/" | "%") unary } ;
-unary      = ("!" | "-") unary | postfix ;
-postfix    = primary { "(" [ args ] ")" | "[" expr "]" } ;
-index      = postfix "[" expr "]" ;
-primary    = NUMBER | STRING | "yes" | "no" | "none" | IDENT
-           | "[" [ expr { "," expr } ] "]" | "(" expr ")" ;
-```
-
-### 3.14 Full example
-
-See [examples/hello.ori](examples/hello.ori). In short:
-
-```ori
 fold fib(n) {
     when n < 2 { give n }
     give fib(n - 1) + fib(n - 2)
 }
 
+hold xs = [10, 20, 30]
+xs[1] = 99
+push(xs, 40)
+
+hold total = 0
 hold i = 0
-loop i < 10 {
-    say("fib(" + str(i) + ") = " + str(fib(i)))
+loop i < len(xs) {
+    when xs[i] > 0 && xs[i] < 100 { total = total + xs[i] }
     i = i + 1
 }
+say("total = " + str(total))
+```
+
+- Types: number, string, bool (`yes`/`no`), `none`, function, array.
+- Operators: `+ - * / %`, `== != < > <= >=`, `&& || !` (short-circuit). `+` on
+  strings concatenates.
+- Built-ins: `say`/`print`, `str`, `num`, `len`, `push`, `pop`, `char_at`, `ord`,
+  `chr`, `substr`, `type`, `abs`, `floor`, `sqrt`, `max`, `min`, `upper`, `lower`,
+  and (for tooling) `read_file`, `write_bytes`, `write_file`, `argc`, `argv`.
+- Comments: `//`, `#`, `/* ... */`.
+
+See [examples/](examples) for more, including
+[examples/ori_in_ori.ori](examples/ori_in_ori.ori) — an Ori interpreter written
+in Ori. Run any example:
+
+```powershell
+core\orivm.exe tooling\oric.orb examples\hello.ori hello.orb
+core\orivm.exe hello.orb
 ```
 
 ---
 
-## 4. Ori written in Ori (self-hosting)
+## 4. Self-hosting & hardening
 
-[examples/ori_in_ori.ori](examples/ori_in_ori.ori) is a full Ori interpreter
-**written in Ori**. It is ordinary Ori source — compiled to bytecode (or to an
-encrypted `.orx`) and executed on the Ori VM — and it contains:
+- **Self-hosting.** `tooling/oric.ori` is compiled by the existing `oric.orb`,
+  and the result compiles `oric.ori` again to a **byte-identical** image (a
+  fixpoint) — proof the Ori compiler is correct and stable. No .NET, no C
+  compiler-for-Ori: Ori compiles Ori.
+- **Per-build opcode randomization.** `ori build --release` picks a fresh random
+  opcode permutation each build and stores it (encrypted) inside the image, so
+  two builds of the same source produce different bytecode and ciphertext.
+- **Encryption.** The `.orx` payload is ChaCha20-encrypted and HMAC-SHA256
+  protected; the VM refuses tampered images. Without the VM the file is opaque
+  bytes. (Application-level anti-reversing, not unbreakable DRM — the VM is open
+  source; a per-user key would be needed for stronger guarantees.)
 
-- a **tokenizer** built from `char_at` / `ord` / `substr`,
-- a **recursive-descent parser** producing an AST out of nested arrays,
-- a **tree-walking evaluator** with its own environments, function table, and a
-  `give`/return signalling mechanism (Ori has no exceptions).
-
-It interprets a meaningful subset of Ori: `hold`, `fold`/`give` (with recursion),
-`when`/`else`/`else when`, `loop`, arithmetic, comparisons, string concatenation,
-and the built-ins `say` / `str`.
-
-Run it:
-
-```powershell
-oric run examples\ori_in_ori.ori
-```
-
-It builds a small Ori program as text, then interprets it. Output:
-
-```
-Hello, Ori!
-fib(0) = 0
-fib(1) = 1
-...
-fib(10) = 55
-```
-
-The same file compiles to an encrypted `.orx` and runs identically — i.e. an
-encrypted Ori image whose job is to interpret Ori.
+Details and the bootstrap procedure: [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md).
 
 ---
 
-## 5. Why `.orx` is hard to reverse engineer
+## 5. Project layout
 
-The `.orx` format applies defense in depth (see [Container.cs](src/OriLang/Container.cs)):
-
-1. **Private serialization** of the program into an internal binary layout.
-2. **Opcode permutation**: every opcode byte passes through a secret 256-entry
-   permutation table — even once decrypted, the bytes do not match the public
-   opcode numbers.
-3. **Operand whitening**: every operand (constant index, jump target, slot, …)
-   is XOR-masked by a deterministic keystream — the decrypted bytecode still
-   doesn't read as plain instructions without the seed.
-4. **ChaCha20 encryption** (implemented from scratch, 20 rounds) over the whole
-   payload, with a key derived from the master key + a **per-file random salt**.
-5. **The master key is reconstructed at runtime** by hashing (SHA-256) several
-   scattered sources (the xor of two arrays + bytes pulled from the permutation
-   table + constants) — there is no contiguous 32-byte key blob in the binary to grep for.
-6. **HMAC-SHA256** detects tampering — the VM **refuses** to run an image that has
-   been modified or encrypted with the wrong key.
-
-Consequences: the same source file produces a **different** ciphertext on every
-`build`; flipping any single byte makes the VM report `integrity check failed`.
-
-> **Security note.** This is **application-level** anti-reversing (raising the
-> bar), not unbreakable DRM: anyone with the VM binary and enough patience can
-> still analyze it. Stronger protection would need anti-debugging, white-box
-> crypto, hardware binding, and so on.
-
----
-
-## 6. Inside the Ori VM
-
-Stack-based, with explicit call frames (deep recursion is bounded by memory, not
-the host stack). Instruction set:
-
-```
-PushConst PushNil PushTrue PushFalse Pop
-LoadGlobal StoreGlobal LoadLocal StoreLocal
-Add Sub Mul Div Mod Neg
-Eq Neq Lt Gt Le Ge Not
-Jmp JmpIfFalse JmpIfTrue
-Call Ret Halt
-MakeArray Index StoreIndex
-```
-
-Pipeline: [Lexer](src/OriLang/Lexer.cs) → [Parser](src/OriLang/Parser.cs) →
-[Compiler](src/OriLang/Compiler.cs) → [VirtualMachine](src/OriLang/VirtualMachine.cs).
-
----
-
-## 7. Windows demo (a window with one button)
-
-```powershell
-src\OriDemo\bin\Release\net9.0-windows\OriDemo.exe
-```
-
-The window shows a **“▶ Run Ori VM”** button. Each click decrypts `program.orx`
-and runs [program.ori](src/OriDemo/program.ori) on the Ori VM: it computes
-`fib(clickCount)` and updates the UI through the `ui_set_text` host function. The
-log panel records every run. A **host function** is how Ori code calls into .NET;
-the demo registers `get_clicks()` and `ui_set_text(s)`.
-
----
-
-## 8. Running on Android (OriDroid)
-
-[src/OriDroid](src/OriDroid) is a **.NET for Android** app that embeds the same
-`OriLang` core. It shows one button; each tap decrypts an embedded `program.orx`
-and runs it on the Ori VM **on the device**, computing `fib(tapCount)` and
-updating the UI through the `ui_set_text` host function. The VM, the bytecode,
-and the encrypted-image format are identical to the desktop tools — only the UI
-layer differs.
-
-Prerequisites (one-time):
-
-```powershell
-dotnet workload install android      # .NET Android workload
-# plus the Android SDK + a JDK 17 (e.g. from Android Studio)
-```
-
-Build the APK:
-
-```powershell
-dotnet build src/OriDroid/OriDroid.csproj -c Release
-# -> src/OriDroid/bin/Release/net9.0-android/com.thanhtruc.oridroid-Signed.apk
-```
-
-Install & run on a device/emulator:
-
-```powershell
-adb install -r src/OriDroid/bin/Release/net9.0-android/com.thanhtruc.oridroid-Signed.apk
-adb shell monkey -p com.thanhtruc.oridroid -c android.intent.category.LAUNCHER 1
-# or simply:  dotnet build src/OriDroid/OriDroid.csproj -c Release -t:Install
-```
-
-Each tap logs a line like `[Ori VM] You tapped 5 times | fib(5) = 5`, proving the
-encrypted Ori image is decrypted and executed on Android.
-
----
-
-## 9. Running in the browser (OriWeb)
-
-[src/OriWeb](src/OriWeb) is a **Blazor WebAssembly** app: the same `OriLang` core
-is compiled to WebAssembly and runs **entirely in the browser** — no server-side
-execution. One button decrypts an embedded `program.orx` and runs it on the Ori
-VM client-side, computing `fib(clickCount)` and updating the page via the
-`ui_set_text` host function.
-
-Prerequisites (one-time):
-
-```powershell
-dotnet workload install wasm-tools
-```
-
-Run the dev server:
-
-```powershell
-dotnet run --project src/OriWeb/OriWeb.csproj -c Release
-# then open the printed http://localhost:... URL
-```
-
-Publish static files (deployable to any static host — GitHub Pages, Netlify, S3…):
-
-```powershell
-dotnet publish src/OriWeb/OriWeb.csproj -c Release
-# -> src/OriWeb/bin/Release/net9.0/publish/wwwroot
-```
-
-The decryption, the bytecode, and the Ori VM all run in WASM; the encrypted
-`.orx` never needs a server.
-
----
-
-## 10. Project layout
-
-| Folder / file | Role |
+| Path | Role |
 |---|---|
-| `core/`       | **Native VM core in C** (`orivm.c`, ChaCha20/SHA-256), runs `.orx`/`.orb` |
-| `tooling/oric.ori` | **The Ori compiler, written in Ori** (emits `.orb`) |
-| `ori.ps1` / `ori.cmd` | **Flutter-style `ori` CLI** (create/run/build/doctor) |
-| `app/`        | Sample project — just `ori/` + `meta` |
-| `docs/TOOLCHAIN.md` | Native architecture & toolchain guide |
-| `src/OriLang` | .NET core: lexer, parser, compiler, VM, encrypted container |
-| `src/oric`    | The .NET `oric` CLI (bootstrap compiler) |
-| `src/OriDemo` | Windows (WinForms) app with one button |
-| `src/OriDroid` | Android (.NET for Android) app with one button |
-| `src/OriWeb`  | Web (Blazor WebAssembly) app with one button |
-| `examples`    | `.ori` examples, incl. the self-hosted interpreter |
+| `core/`         | The native VM in C (`orivm.c`, `sha256.h`, `chacha20.h`) |
+| `tooling/oric.ori` | The Ori compiler, written in Ori |
+| `tooling/oric.orb` | Shipped self-hosted compiler image |
+| `tooling/web/`  | Prebuilt WebAssembly runtime (`orivm.js` + `orivm.wasm`) |
+| `tooling/templates/web/` | Web harness + dev server |
+| `ori.ps1` / `ori.cmd` | The `ori` CLI |
+| `app/`, `app-web/` | Sample projects (just `ori/` + `meta`) |
+| `examples/`     | Language examples |
+| `docs/TOOLCHAIN.md` | Architecture & build guide |
 
 ---
 
-## 11. Current limitations
+## 6. Building the toolchain by hand
 
-- Types: number, string, bool, none, function, array (no hash maps/objects yet).
+```powershell
+# C VM (from a VS dev shell)
+cd core; cl /O2 /Fe:orivm.exe orivm.c          # or: cc -O2 -o orivm orivm.c -lm
+
+# Compile + run an .ori (Ori compiler on the C VM)
+core\orivm.exe tooling\oric.orb  app\ori\main.ori  app.orb
+core\orivm.exe app.orb
+
+# Regenerate the self-hosted compiler image (Ori compiling itself)
+core\orivm.exe tooling\oric.orb  tooling\oric.ori  tooling\oric.orb
+
+# Encrypt a build (per-build random opcodes)
+core\orivm.exe pack app.orb app.orx
+```
+
+## 7. Limitations
+
+- Numbers are IEEE-754 doubles; the Ori compiler emits integer literals inline.
 - No closures / nested functions / block-scoped locals.
-- Numbers are `double` (no arbitrary-precision integers).
-- Application-level anti-reversing (see section 5).
+- Android ships the native arm64 VM + `.orb` (run via `adb`/Termux); a packaged
+  APK is future work.
+- Anti-reversing is application-level (see §4).

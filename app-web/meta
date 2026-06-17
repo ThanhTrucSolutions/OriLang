@@ -1,0 +1,7 @@
+name: app-web
+version: 1.0.0
+entry: ori/main.ori
+platform: web
+
+# `ori run app-web` builds orivm to WebAssembly + serves with hot reload.
+dependencies:

@@ -1,103 +1,114 @@
-# The Ori native toolchain
+# The Ori toolchain (native, self-hosting)
 
-This document describes Ori's native architecture: a **C core VM**, a **compiler
-written in Ori**, and a **Flutter-style `ori` CLI** driving projects that contain
-just an `ori/` folder and a `meta` manifest.
+Ori is built from two parts and a thin CLI — no .NET, no third runtime:
+
+- **Core VM in C** — [core/orivm.c](../core/orivm.c). A stack-based bytecode VM
+  with values, arrays, recursion, host built-ins, and a loader for:
+  - `.orb` — plain bytecode (dev builds, fast, hot-reloadable).
+  - `.orx` — encrypted, per-build-randomized bytecode (release builds).
+  Crypto is implemented from scratch: SHA-256/HMAC ([sha256.h](../core/sha256.h))
+  and ChaCha20 ([chacha20.h](../core/chacha20.h)).
+- **Compiler in Ori** — [tooling/oric.ori](../tooling/oric.ori). Tokenizer +
+  recursive-descent parser + bytecode emitter + `.orb` serializer, written in
+  Ori. It runs on the C VM, so **Ori compiles Ori**.
+- **`ori` CLI** — [ori.ps1](../ori.ps1) (+ `ori.cmd`), Flutter-style.
+
+## Self-hosting & the bootstrap
+
+`oric.ori` is rich enough to compile itself (arrays, `&&`/`||`, `yes/no/none`,
+string escapes, etc.). The shipped image `tooling/oric.orb` is produced by
+running the compiler on its own source, and the result reaches a **fixpoint**:
 
 ```
-            ┌──────────────────────────────────────────────────────────┐
-   .ori ──► │  oric.ori   (the compiler, written in Ori)                 │ ──► .orb
-            │     runs on ▼                                              │
-            │  orivm  (the core VM, written in C)  ◄── runs ─── .orb / .orx
-            └──────────────────────────────────────────────────────────┘
+orivm oric.orb  oric.ori  gen2.orb      # compiler compiles itself
+orivm gen2.orb  oric.ori  gen3.orb      # and again
+# gen2.orb == gen3.orb  (byte-identical)  => correct & stable
 ```
 
-- **Core = C.** `core/orivm.c` is a stack-based bytecode VM with values, arrays,
-  recursion, host built-ins, and a loader for two image formats:
-  - `.orx` — the encrypted format (ChaCha20 + HMAC + opcode permutation +
-    operand whitening), byte-compatible with `src/OriLang/Container.cs`.
-  - `.orb` — plain bytecode (no crypto), what the Ori-written compiler emits.
-- **Compiler = Ori.** `tooling/oric.ori` is a tokenizer + recursive-descent
-  parser + bytecode emitter + `.orb` serializer — written entirely in Ori. It is
-  *not* rewritten in C; it runs on the C VM.
-- **`ori` CLI.** `ori.ps1` (+ `ori.cmd`) is a thin Flutter-style driver.
+To regenerate the compiler after editing `oric.ori`:
 
-## Project structure: just `ori/` + `meta`
+```
+core\orivm.exe tooling\oric.orb  tooling\oric.ori  tooling\oric.orb
+```
 
-An Ori project is exactly:
+No external compiler is required — Ori is its own compiler from here on.
+
+## Project structure: `ori/` + `meta`
 
 ```
 myapp/
-  ori/
-    main.ori        # your code (entry point)
-  meta              # the manifest
+  ori/main.ori
+  meta
 ```
-
-`meta` is a tiny key/value manifest:
 
 ```
 name: myapp
 version: 1.0.0
 entry: ori/main.ori
-
-# Everything the project needs is declared here.
-# `ori run` auto-installs the toolchain (builds the native VM) on first use.
+platform: windows        # windows | web | android
 dependencies:
 ```
 
-## The `ori` commands (Flutter-style)
+## `ori` commands
 
 ```
-ori create <name>   scaffold a new project (only  ori/  +  meta)
-ori run [path]      compile the project's Ori and run it on the C VM
-ori build [path]    compile to  <project>/build/app.orb
-ori doctor          install/build everything the toolchain needs
+ori create <name> [-Platform windows|web|android]
+ori run   [path] [-Hot]      compile + run; -Hot = hot reload
+ori dev   [path]             hot reload (web: live dev server)
+ori build [path] [-Release]  build/app.orb  (-Release: encrypted build/app.orx)
+ori doctor                   build the native VM if missing; check the toolchain
 ori version
 ```
 
-`ori run` flow:
+`ori run` flow: **doctor** (build `core/orivm.exe` with MSVC if missing) →
+**compile** (`orivm oric.orb  ori/main.ori  build/app.orb`) → **run**
+(`orivm build/app.orb`). `-Hot` watches `ori/` and recompiles+reruns on save.
 
-1. **doctor** — if `core/orivm.exe` is missing, detect a C compiler (MSVC) and
-   build the VM. This is the "auto-install everything needed when developing".
-2. **compile** — run the Ori compiler image on the VM to turn the project's
-   `ori/main.ori` into `build/app.orb`:
-   `orivm tooling/oric.orx  <proj>/ori/main.ori  <proj>/build/app.orb`
-3. **run** — `orivm <proj>/build/app.orb`.
+## Platforms
 
-## Bootstrap chain
+- **Windows (native).** `orivm.exe app.orb`. Hot reload via `ori dev`.
+- **Web.** `core/orivm.c` is compiled to WebAssembly with Emscripten
+  (`tooling/web/orivm.js` + `orivm.wasm`, shipped prebuilt). `ori run` on a
+  `platform: web` project serves a dev server (Node) that recompiles `ori/` on
+  save; the page fetches the new `.orb` and re-runs — hot reload in the browser.
+  To rebuild the WASM runtime:
+  ```
+  emcc core/orivm.c -O2 -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS=callMain,FS \
+       -sINVOKE_RUN=0 -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 \
+       -sMODULARIZE=1 -sEXPORT_NAME=createOriVM -o tooling/web/orivm.js
+  ```
+- **Android.** `ori build -Platform android` cross-compiles the VM to a native
+  `arm64` binary via the NDK and bundles `app.orb`:
+  ```
+  adb push build/android/* /data/local/tmp/
+  adb shell 'cd /data/local/tmp && ./orivm-arm64 app.orb'
+  ```
+  A packaged APK is future work.
 
-The Ori compiler must itself be runnable, so it ships pre-compiled:
+## Image formats
+
+- **`.orb`** (`ORB1`): plain little-endian bytecode — const pool, `mainIndex`,
+  functions, instructions (`opcode` byte + `i32` arg). Easy for the Ori compiler
+  to emit; fast to load.
+- **`.orx`** (`ORIX` v2): `salt[16]` + `nonce[12]` + ChaCha20 ciphertext +
+  HMAC-SHA256. The decrypted payload begins with a **per-build random opcode-seed
+  and whitening-seed**, so every release build uses a different opcode mapping.
+  Produced by `orivm pack in.orb out.orx`.
+
+## Why `.orx` is hard to read
+
+ChaCha20 encryption + HMAC integrity + a **per-build** secret opcode permutation
++ operand whitening. Two builds of identical source differ entirely; flipping any
+byte makes the VM report `integrity check failed`. This is application-level
+anti-reversing — the VM is open source, so the master key is recoverable by
+anyone who has it; a per-user key would be needed for stronger guarantees.
+
+## VM instruction set
 
 ```
-tooling/oric.ori  ──(C# oric, bootstrap)──►  tooling/oric.orx   (committed image)
+HALT PUSHCONST PUSHNIL PUSHTRUE PUSHFALSE POP
+LOADGLOBAL STOREGLOBAL LOADLOCAL STORELOCAL
+ADD SUB MUL DIV MOD NEG  EQ NEQ LT GT LE GE NOT
+JMP JMPIFFALSE JMPIFTRUE CALL RET
+MAKEARRAY INDEX STOREINDEX  PUSHINT
 ```
-
-`tooling/oric.orx` is the only prebuilt artifact shipped. Everything else is
-built on the user's machine by `ori doctor`. The C# `oric` (in `src/`) is used
-only as the one-time bootstrap to produce that image; it is not needed at
-runtime. (Full self-bootstrap — the Ori compiler compiling itself — additionally
-needs `&&`/`||` in the compiler's accepted subset; that is future work.)
-
-## Building / regenerating by hand
-
-```powershell
-# Build the C VM
-cd core
-cl /O2 /Fe:orivm.exe orivm.c            # MSVC (from a VS dev shell)
-# or:  cc -O2 -o orivm orivm.c -lm       # clang/gcc
-
-# Regenerate the bootstrap compiler image (needs the .NET oric)
-oric build tooling/oric.ori -o tooling/oric.orx
-
-# Compile + run any .ori with the Ori compiler on the C VM
-orivm tooling/oric.orx  myapp/ori/main.ori  app.orb
-orivm app.orb
-```
-
-## Supported language subset (Ori compiler)
-
-`oric.ori` currently compiles: `hold`, `fold`/`give` (with recursion),
-`when`/`else`/`else when`, `loop`, arithmetic (`+ - * / %`), comparisons, unary
-`-`/`!`, function calls, string literals, and integer literals. (The C# `oric`
-remains the full-featured compiler — including arrays, `&&`/`||`, and the
-encrypted `.orx` output — and is what the desktop/Android/Web demos use.)

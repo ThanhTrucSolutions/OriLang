@@ -1,14 +1,14 @@
 // ============================================================================
-//  oric.ori — the Ori compiler, written in Ori.
+//  oric.ori — the Ori compiler, written in Ori (self-hosting).
 //
-//  Reads an .ori source file, compiles a subset of Ori to plain bytecode, and
-//  writes a .orb image that the C core VM (core/orivm.c) runs directly.
-//  This is "Ori compiles Ori": the compiler itself runs on the C VM.
+//  Reads an .ori source file and writes a .orb bytecode image that the C core
+//  VM (core/orivm.c) runs. This compiler is rich enough to compile *itself*:
+//  it supports hold, fold/give (recursion), when/else/else-when, loop,
+//  arithmetic, comparisons, unary - / !, logical && / || (short-circuit),
+//  calls, strings (with \" \\ \n \t escapes), integers, yes/no/none, and
+//  arrays ([..], indexing a[i], index assignment a[i] = v).
 //
-//  Usage (run on the C VM):  orivm oric.orb  <source.ori>  <out.orb>
-//
-//  Supported subset: hold, fold/give (recursion), when/else/else-when, loop,
-//  arithmetic (+ - * / %), comparisons, unary - / !, calls, strings, integers.
+//  Usage (on the C VM):   orivm oric.orb  <source.ori>  <out.orb>
 // ============================================================================
 
 // ---- token kinds ----
@@ -32,6 +32,12 @@ hold N_LOOP = 9
 hold N_GIVE = 10
 hold N_EXPR = 11
 hold N_FOLD = 12
+hold N_BOOL = 13
+hold N_NIL = 14
+hold N_ARRAY = 15
+hold N_INDEX = 16
+hold N_INDEXSET = 17
+hold N_LOGICAL = 18
 
 // ---- VM opcodes (must match core/orivm.c) ----
 hold OP_PUSHCONST = 1
@@ -47,18 +53,22 @@ hold OP_NEG = 15
 hold OP_NOT = 22
 hold OP_JMP = 23
 hold OP_JMPIFFALSE = 24
+hold OP_JMPIFTRUE = 25
 hold OP_CALL = 26
 hold OP_RET = 27
+hold OP_MAKEARRAY = 28
+hold OP_INDEX = 29
+hold OP_STOREINDEX = 30
 hold OP_PUSHINT = 31
 
 // ---- parser/codegen state ----
 hold P_toks = []
 hold P_pos = 0
-hold C_strs = []         // constant pool (strings only)
+hold C_strs = []
 hold F_names = []
 hold F_arity = []
 hold F_local = []
-hold F_code = []         // array of code arrays; each instr is [op, arg]
+hold F_code = []
 hold CUR_CODE = []
 hold CUR_LNAMES = []
 hold CUR_LSLOTS = []
@@ -66,7 +76,7 @@ hold CUR_NEXTSLOT = 0
 hold CUR_ISMAIN = no
 
 // ---------------------------------------------------------------------------
-//  Character helpers + tokenizer  (same proven logic as the interpreter)
+//  Character helpers + tokenizer
 // ---------------------------------------------------------------------------
 fold is_digit(c) {
     hold k = ord(c)
@@ -110,16 +120,27 @@ fold tokenize(src) {
             push(toks, [TK_IDENT, substr(src, s1, i - s1), 0])
         } else when c == "\"" {
             i = i + 1
-            hold s2 = i
+            hold sval = ""
             loop i < n && char_at(src, i) != "\"" {
-                i = i + 1
+                hold ch = char_at(src, i)
+                when ch == "\\" {
+                    i = i + 1
+                    hold e = char_at(src, i)
+                    when e == "n" { sval = sval + chr(10) }
+                    else when e == "t" { sval = sval + chr(9) }
+                    else when e == "r" { sval = sval + chr(13) }
+                    else { sval = sval + e }
+                    i = i + 1
+                } else {
+                    sval = sval + ch
+                    i = i + 1
+                }
             }
-            hold strtext = substr(src, s2, i - s2)
             i = i + 1
-            push(toks, [TK_STR, strtext, 0])
+            push(toks, [TK_STR, sval, 0])
         } else {
             hold two = substr(src, i, 2)
-            when two == "==" || two == "!=" || two == "<=" || two == ">=" {
+            when two == "==" || two == "!=" || two == "<=" || two == ">=" || two == "&&" || two == "||" {
                 push(toks, [TK_SYM, two, 0])
                 i = i + 2
             } else {
@@ -235,12 +256,32 @@ fold parse_give() {
 }
 fold parse_expr() { give parse_assign() }
 fold parse_assign() {
-    hold left = parse_equality()
+    hold left = parse_or()
     when p_check_sym("=") {
         p_advance()
-        give [N_ASSIGN, left[1], parse_assign()]
+        hold rhs = parse_assign()
+        when left[0] == N_INDEX {
+            give [N_INDEXSET, left[1], left[2], rhs]
+        }
+        give [N_ASSIGN, left[1], rhs]
     }
     give left
+}
+fold parse_or() {
+    hold e = parse_and()
+    loop p_check_sym("||") {
+        p_advance()
+        e = [N_LOGICAL, "||", e, parse_and()]
+    }
+    give e
+}
+fold parse_and() {
+    hold e = parse_equality()
+    loop p_check_sym("&&") {
+        p_advance()
+        e = [N_LOGICAL, "&&", e, parse_equality()]
+    }
+    give e
 }
 fold parse_equality() {
     hold e = parse_comparison()
@@ -279,22 +320,29 @@ fold parse_unary() {
         hold op = p_advance()[1]
         give [N_UNARY, op, parse_unary()]
     }
-    give parse_call()
+    give parse_postfix()
 }
-fold parse_call() {
+fold parse_postfix() {
     hold e = parse_primary()
-    loop p_check_sym("(") {
-        p_advance()
-        hold args = []
-        when !p_check_sym(")") {
-            push(args, parse_expr())
-            loop p_check_sym(",") {
-                p_advance()
+    loop p_check_sym("(") || p_check_sym("[") {
+        when p_check_sym("(") {
+            p_advance()
+            hold args = []
+            when !p_check_sym(")") {
                 push(args, parse_expr())
+                loop p_check_sym(",") {
+                    p_advance()
+                    push(args, parse_expr())
+                }
             }
+            p_eat_sym(")")
+            e = [N_CALL, e[1], args]
+        } else {
+            p_advance()
+            hold idx = parse_expr()
+            p_eat_sym("]")
+            e = [N_INDEX, e, idx]
         }
-        p_eat_sym(")")
-        e = [N_CALL, e[1], args]
     }
     give e
 }
@@ -312,6 +360,9 @@ fold parse_primary() {
     when p_kind() == TK_IDENT {
         hold nm = p_text()
         p_advance()
+        when nm == "yes" { give [N_BOOL, 1] }
+        when nm == "no" { give [N_BOOL, 0] }
+        when nm == "none" { give [N_NIL, 0] }
         give [N_VAR, nm]
     }
     when p_check_sym("(") {
@@ -319,6 +370,19 @@ fold parse_primary() {
         hold inner = parse_expr()
         p_eat_sym(")")
         give inner
+    }
+    when p_check_sym("[") {
+        p_advance()
+        hold elems = []
+        when !p_check_sym("]") {
+            push(elems, parse_expr())
+            loop p_check_sym(",") {
+                p_advance()
+                push(elems, parse_expr())
+            }
+        }
+        p_eat_sym("]")
+        give [N_ARRAY, elems]
     }
     say("parse error: unexpected token '" + p_text() + "'")
     p_advance()
@@ -337,7 +401,6 @@ fold const_str(s) {
     push(C_strs, s)
     give len(C_strs) - 1
 }
-
 fold begin_func(isMain) {
     CUR_CODE = []
     CUR_LNAMES = []
@@ -351,7 +414,6 @@ fold emit(op, arg) {
 }
 fold here() { give len(CUR_CODE) }
 fold patch(at, target) { CUR_CODE[at][1] = target }
-
 fold declare_local(name) {
     hold slot = CUR_NEXTSLOT
     push(CUR_LNAMES, name)
@@ -360,14 +422,15 @@ fold declare_local(name) {
     give slot
 }
 fold resolve_local(name) {
-    hold i = 0
-    loop i < len(CUR_LNAMES) {
+    // Search from the most recent declaration backwards, so a re-declared name
+    // resolves to its latest slot (matching the reference compiler's behavior).
+    hold i = len(CUR_LNAMES) - 1
+    loop i >= 0 {
         when CUR_LNAMES[i] == name { give CUR_LSLOTS[i] }
-        i = i + 1
+        i = i - 1
     }
     give 0 - 1
 }
-
 fold binop(op) {
     when op == "+" { give 10 }
     when op == "-" { give 11 }
@@ -390,6 +453,14 @@ fold compile_expr(node) {
         emit(OP_PUSHINT, floor(node[1]))
     } else when nt == N_STR {
         emit(OP_PUSHCONST, const_str(node[1]))
+    } else when nt == N_BOOL {
+        when node[1] == 1 {
+            emit(OP_PUSHTRUE, 0)
+        } else {
+            emit(OP_PUSHFALSE, 0)
+        }
+    } else when nt == N_NIL {
+        emit(OP_PUSHNIL, 0)
     } else when nt == N_VAR {
         hold slot = resolve_local(node[1])
         when slot >= 0 {
@@ -409,12 +480,46 @@ fold compile_expr(node) {
             emit(OP_STOREGLOBAL, ci)
             emit(OP_LOADGLOBAL, ci)
         }
+    } else when nt == N_INDEX {
+        compile_expr(node[1])
+        compile_expr(node[2])
+        emit(OP_INDEX, 0)
+    } else when nt == N_INDEXSET {
+        compile_expr(node[1])
+        compile_expr(node[2])
+        compile_expr(node[3])
+        emit(OP_STOREINDEX, 0)
+    } else when nt == N_ARRAY {
+        hold elems = node[1]
+        hold k = 0
+        loop k < len(elems) {
+            compile_expr(elems[k])
+            k = k + 1
+        }
+        emit(OP_MAKEARRAY, len(elems))
     } else when nt == N_UNARY {
         compile_expr(node[2])
         when node[1] == "-" {
             emit(OP_NEG, 0)
         } else {
             emit(OP_NOT, 0)
+        }
+    } else when nt == N_LOGICAL {
+        compile_expr(node[2])
+        when node[1] == "&&" {
+            hold jf = emit(OP_JMPIFFALSE, 0)
+            compile_expr(node[3])
+            hold je = emit(OP_JMP, 0)
+            patch(jf, here())
+            emit(OP_PUSHFALSE, 0)
+            patch(je, here())
+        } else {
+            hold jt = emit(OP_JMPIFTRUE, 0)
+            compile_expr(node[3])
+            hold je2 = emit(OP_JMP, 0)
+            patch(jt, here())
+            emit(OP_PUSHTRUE, 0)
+            patch(je2, here())
         }
     } else when nt == N_BIN {
         compile_expr(node[2])
@@ -445,7 +550,6 @@ fold compile_block(stmts) {
         k = k + 1
     }
 }
-
 fold compile_stmt(node) {
     hold nt = node[0]
     when nt == N_HOLD {
@@ -490,7 +594,6 @@ fold compile_stmt(node) {
 
 fold compile_program(prog) {
     hold mains = []
-    // function 0 is __main__; user folds follow.
     push(F_names, "__main__")
     push(F_arity, 0)
     push(F_local, 0)
@@ -508,14 +611,12 @@ fold compile_program(prog) {
         }
         i = i + 1
     }
-    // compile __main__
     begin_func(yes)
     compile_block(mains)
     emit(OP_PUSHNIL, 0)
     emit(OP_RET, 0)
     F_code[0] = CUR_CODE
     F_local[0] = CUR_NEXTSLOT
-    // compile each fold
     hold fi = 1
     i = 0
     loop i < len(prog) {
@@ -564,7 +665,6 @@ fold emit_ascii(buf, s) {
         i = i + 1
     }
 }
-
 fold serialize() {
     hold buf = []
     emit_ascii(buf, "ORB1")

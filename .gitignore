@@ -19,7 +19,10 @@ android_*.png
 *.exe
 *.obj
 *.orb
+*.orx
 build/
+core/orivm-android-*
 
-# ...but DO keep the shipped bootstrap compiler image
-!tooling/oric.orx
+# ...but DO keep the shipped self-hosted compiler image + prebuilt web runtime
+!tooling/oric.orb
+# (tooling/web/orivm.js and orivm.wasm are kept by default — not ignored)

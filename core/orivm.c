@@ -15,8 +15,11 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 #include "sha256.h"
 #include "chacha20.h"
+
+static uint8_t* read_all(const char* path, size_t* outN); // fwd
 
 // ---------------------------------------------------------------------------
 //  Opcodes (must match src/OriLang/OpCode.cs)
@@ -33,6 +36,7 @@ enum {
 
 static void die(const char* msg){ fprintf(stderr, "%s\n", msg); exit(3); }
 static void* xmalloc(size_t n){ void* p=malloc(n); if(!p) die("out of memory"); return p; }
+static char* dupstr(const char* s){ size_t n=strlen(s)+1; char* d=xmalloc(n); memcpy(d,s,n); return d; }
 
 // ---------------------------------------------------------------------------
 //  Values
@@ -171,9 +175,16 @@ static uint8_t rd_u8(Cur* c){ return c->p[c->pos++]; }
 static double rd_double(Cur* c){ uint64_t u=0; for(int i=0;i<8;i++) u|=((uint64_t)c->p[c->pos++])<<(8*i); double d; memcpy(&d,&u,8); return d; }
 static char* rd_str(Cur* c, int* outLen){ int len=rd_i32(c); char* s=xmalloc(len+1); memcpy(s,c->p+c->pos,len); s[len]=0; c->pos+=len; if(outLen)*outLen=len; return s; }
 
+static void build_perm_seeded(uint32_t seed, uint8_t perm[256], uint8_t inv[256]){
+    for(int i=0;i<256;i++) perm[i]=(uint8_t)i;
+    uint32_t st=seed;
+    for(int i=255;i>0;i--){ st^=st<<13; st^=st>>17; st^=st<<5; int j=(int)(st%(uint32_t)(i+1)); uint8_t t=perm[i];perm[i]=perm[j];perm[j]=t; }
+    for(int i=0;i<256;i++) inv[perm[i]]=(uint8_t)i;
+}
+
 // Deserialize the plaintext payload into a Program.
-// permuted: opcodes go through INVPERM. whitened: operands XORed by the keystream.
-static Program* deserialize(const uint8_t* data, size_t n, int permuted, int whitened){
+// invPerm!=NULL: opcodes go through it. whitened: operands XORed by xorshift(whitenSeed).
+static Program* deserialize(const uint8_t* data, size_t n, const uint8_t* invPerm, int whitened, uint32_t whitenSeed){
     Cur c={data,n,0};
     Program* pr=xmalloc(sizeof(Program));
     pr->constCount=rd_i32(&c);
@@ -191,7 +202,7 @@ static Program* deserialize(const uint8_t* data, size_t n, int permuted, int whi
     pr->mainIndex=rd_i32(&c);
     pr->funcCount=rd_i32(&c);
     pr->funcs=xmalloc(sizeof(Func)*(pr->funcCount>0?pr->funcCount:1));
-    uint32_t white=WHITE_SEED;
+    uint32_t white=whitenSeed;
     for(int i=0;i<pr->funcCount;i++){
         Func* f=&pr->funcs[i];
         f->name=rd_str(&c,NULL);
@@ -202,7 +213,7 @@ static Program* deserialize(const uint8_t* data, size_t n, int permuted, int whi
         for(int j=0;j<f->codeCount;j++){
             uint8_t raw=rd_u8(&c);
             int32_t arg=rd_i32(&c);
-            f->code[j].op = permuted ? INVPERM[raw] : raw;
+            f->code[j].op = invPerm ? invPerm[raw] : raw;
             if(whitened){ white^=white<<13; white^=white>>17; white^=white<<5; arg ^= (int32_t)white; }
             f->code[j].arg=arg;
         }
@@ -210,29 +221,125 @@ static Program* deserialize(const uint8_t* data, size_t n, int permuted, int whi
     return pr;
 }
 
+// .orx v2 header: "ORIX" ver=2 flags salt[16] nonce[12] cipherLen[4] | cipher | mac[32]
+// Decrypted payload: permSeed[4] whitenSeed[4] | serialized program (opcodes permuted
+// by a PER-BUILD random seed, operands whitened). So the opcode mapping differs every build.
 static Program* load_orx(const uint8_t* img, size_t n){
     if(n<38+32) die("image too small");
     if(memcmp(img,"ORIX",4)!=0) die("bad magic (not .orx)");
-    if(img[4]!=1) die("unsupported .orx version");
+    if(img[4]!=2) die("unsupported .orx version");
     const uint8_t* salt=img+6;
     const uint8_t* nonce=img+22;
     int32_t cipherLen=(int32_t)((uint32_t)img[34]|((uint32_t)img[35]<<8)|((uint32_t)img[36]<<16)|((uint32_t)img[37]<<24));
     size_t bodyLen=38+(size_t)cipherLen;
-    if(bodyLen+32>n) die("corrupt image (length mismatch)");
+    if(cipherLen<8 || bodyLen+32>n) die("corrupt image (length mismatch)");
     uint8_t master[32]; master_key(master);
-    uint8_t macKey[32]; derive(master,salt,16,"ORI-MAC-v1",macKey);
+    uint8_t macKey[32]; derive(master,salt,16,"ORI-MAC-v2",macKey);
     uint8_t mac[32]; hmac_sha256(macKey,32,img,bodyLen,mac);
     if(memcmp(mac,img+bodyLen,32)!=0) die("integrity check failed (tampered or wrong key)");
-    uint8_t encKey[32]; derive(master,salt,16,"ORI-ENC-v1",encKey);
-    uint8_t* plain=xmalloc(cipherLen?cipherLen:1);
+    uint8_t encKey[32]; derive(master,salt,16,"ORI-ENC-v2",encKey);
+    uint8_t* plain=xmalloc(cipherLen);
     memcpy(plain,img+38,cipherLen);
     chacha20_crypt(encKey,nonce,1,plain,cipherLen);
-    return deserialize(plain,cipherLen,1,1);
+    uint32_t permSeed = (uint32_t)plain[0]|((uint32_t)plain[1]<<8)|((uint32_t)plain[2]<<16)|((uint32_t)plain[3]<<24);
+    uint32_t whitenSeed=(uint32_t)plain[4]|((uint32_t)plain[5]<<8)|((uint32_t)plain[6]<<16)|((uint32_t)plain[7]<<24);
+    uint8_t perm[256], inv[256]; build_perm_seeded(permSeed,perm,inv);
+    return deserialize(plain+8,cipherLen-8,inv,1,whitenSeed);
 }
 
 static Program* load_orb(const uint8_t* img, size_t n){
     if(n<4 || memcmp(img,"ORB1",4)!=0) die("bad magic (not .orb)");
-    return deserialize(img+4,n-4,0,0);
+    return deserialize(img+4,n-4,NULL,0,0);
+}
+
+// ---- serialize a Program back to a plaintext payload (opcodes permuted, operands whitened) ----
+typedef struct { uint8_t* d; size_t len, cap; } Buf;
+static void buf_init(Buf* b){ b->cap=256; b->len=0; b->d=xmalloc(b->cap); }
+static void buf_u8(Buf* b, uint8_t v){ if(b->len+1>b->cap){ b->cap*=2; b->d=realloc(b->d,b->cap);} b->d[b->len++]=v; }
+static void buf_i32(Buf* b, int32_t v){ uint32_t u=(uint32_t)v; buf_u8(b,(uint8_t)u);buf_u8(b,(uint8_t)(u>>8));buf_u8(b,(uint8_t)(u>>16));buf_u8(b,(uint8_t)(u>>24)); }
+static void buf_double(Buf* b, double d){ uint64_t u; memcpy(&u,&d,8); for(int i=0;i<8;i++) buf_u8(b,(uint8_t)(u>>(8*i))); }
+static void buf_str(Buf* b, const char* s, int len){ buf_i32(b,len); for(int i=0;i<len;i++) buf_u8(b,(uint8_t)s[i]); }
+
+static uint8_t* serialize_payload(Program* pr, const uint8_t perm[256], uint32_t whitenSeed, size_t* outLen){
+    Buf b; buf_init(&b);
+    buf_i32(&b, pr->constCount);
+    for(int i=0;i<pr->constCount;i++){
+        Value v=pr->consts[i];
+        buf_u8(&b,(uint8_t)v.t);
+        if(v.t==V_NUM) buf_double(&b,v.u.num);
+        else if(v.t==V_STR) buf_str(&b,v.u.s->d,v.u.s->len);
+        else if(v.t==V_BOOL) buf_u8(&b, v.u.num!=0?1:0);
+        // V_NIL: nothing
+    }
+    buf_i32(&b, pr->mainIndex);
+    buf_i32(&b, pr->funcCount);
+    uint32_t white=whitenSeed;
+    for(int f=0;f<pr->funcCount;f++){
+        Func* fn=&pr->funcs[f];
+        buf_str(&b, fn->name,(int)strlen(fn->name));
+        buf_i32(&b, fn->arity);
+        buf_i32(&b, fn->localCount);
+        buf_i32(&b, fn->codeCount);
+        for(int j=0;j<fn->codeCount;j++){
+            buf_u8(&b, perm[(uint8_t)fn->code[j].op]);
+            white^=white<<13; white^=white>>17; white^=white<<5;
+            buf_i32(&b, fn->code[j].arg ^ (int32_t)white);
+        }
+    }
+    *outLen=b.len; return b.d;
+}
+
+static uint32_t mix_seed(){
+    uint32_t s=(uint32_t)time(NULL);
+    s ^= (uint32_t)clock()*2654435761u;
+    s ^= (uint32_t)(uintptr_t)&s;
+    s ^= s<<13; s^=s>>17; s^=s<<5;
+    if(s==0) s=0x9E3779B9u;
+    return s;
+}
+static void fill_rand(uint8_t* p, int n, uint32_t* st){
+    for(int i=0;i<n;i++){ *st^=*st<<13; *st^=*st>>17; *st^=*st<<5; p[i]=(uint8_t)(*st>>((i&3)*8)); }
+}
+
+// pack a plain .orb into an encrypted, per-build-randomized .orx (v2)
+static int do_pack(const char* inPath, const char* outPath){
+    size_t n; uint8_t* img=read_all(inPath,&n);
+    Program* pr;
+    if(n>=4 && memcmp(img,"ORB1",4)==0) pr=load_orb(img,n);
+    else if(n>=4 && memcmp(img,"ORIX",4)==0) pr=load_orx(img,n);
+    else { fprintf(stderr,"pack: input must be .orb or .orx\n"); return 2; }
+
+    uint32_t rng=mix_seed();
+    uint32_t permSeed; fill_rand((uint8_t*)&permSeed,4,&rng); if(permSeed==0) permSeed=1;
+    uint32_t whitenSeed; fill_rand((uint8_t*)&whitenSeed,4,&rng); if(whitenSeed==0) whitenSeed=1;
+    uint8_t salt[16], nonce[12]; fill_rand(salt,16,&rng); fill_rand(nonce,12,&rng);
+
+    uint8_t perm[256], inv[256]; build_perm_seeded(permSeed,perm,inv);
+    size_t plLen; uint8_t* body=serialize_payload(pr,perm,whitenSeed,&plLen);
+    // prepend the two seeds
+    size_t payLen=8+plLen; uint8_t* payload=xmalloc(payLen);
+    payload[0]=(uint8_t)permSeed;payload[1]=(uint8_t)(permSeed>>8);payload[2]=(uint8_t)(permSeed>>16);payload[3]=(uint8_t)(permSeed>>24);
+    payload[4]=(uint8_t)whitenSeed;payload[5]=(uint8_t)(whitenSeed>>8);payload[6]=(uint8_t)(whitenSeed>>16);payload[7]=(uint8_t)(whitenSeed>>24);
+    memcpy(payload+8,body,plLen);
+
+    uint8_t master[32]; master_key(master);
+    uint8_t encKey[32]; derive(master,salt,16,"ORI-ENC-v2",encKey);
+    chacha20_crypt(encKey,nonce,1,payload,payLen);
+
+    // assemble header+cipher, then HMAC
+    size_t headLen=38; size_t bodyLen=headLen+payLen;
+    uint8_t* out=xmalloc(bodyLen+32);
+    memcpy(out,"ORIX",4); out[4]=2; out[5]=0;
+    memcpy(out+6,salt,16); memcpy(out+22,nonce,12);
+    out[34]=(uint8_t)payLen;out[35]=(uint8_t)(payLen>>8);out[36]=(uint8_t)(payLen>>16);out[37]=(uint8_t)(payLen>>24);
+    memcpy(out+38,payload,payLen);
+    uint8_t macKey[32]; derive(master,salt,16,"ORI-MAC-v2",macKey);
+    hmac_sha256(macKey,32,out,bodyLen,out+bodyLen);
+
+    FILE* f=fopen(outPath,"wb"); if(!f){ fprintf(stderr,"pack: cannot write %s\n",outPath); return 2; }
+    fwrite(out,1,bodyLen+32,f); fclose(f);
+    printf("packed %s -> %s (%zu bytes, encrypted, per-build opcode map)\n", inPath, outPath, bodyLen+32);
+    return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -256,7 +363,7 @@ struct VM {
 static void g_set(VM* vm, const char* name, Value v){
     for(int i=0;i<vm->gcount;i++) if(strcmp(vm->globals[i].name,name)==0){ vm->globals[i].v=v; return; }
     if(vm->gcount>=vm->gcap){ vm->gcap=vm->gcap?vm->gcap*2:32; vm->globals=realloc(vm->globals,sizeof(GVar)*vm->gcap); }
-    vm->globals[vm->gcount].name=_strdup(name); vm->globals[vm->gcount].v=v; vm->gcount++;
+    vm->globals[vm->gcount].name=dupstr(name); vm->globals[vm->gcount].v=v; vm->gcount++;
 }
 static int g_get(VM* vm, const char* name, Value* out){
     for(int i=0;i<vm->gcount;i++) if(strcmp(vm->globals[i].name,name)==0){ *out=vm->globals[i].v; return 1; }
@@ -478,14 +585,39 @@ static uint8_t* read_all(const char* path, size_t* outN){
     uint8_t* b=xmalloc(n>0?n:1); fread(b,1,n,f); fclose(f); *outN=(size_t)n; return b;
 }
 
+static const char* OPNAME[]={
+"HALT","PUSHCONST","PUSHNIL","PUSHTRUE","PUSHFALSE","POP","LOADGLOBAL","STOREGLOBAL",
+"LOADLOCAL","STORELOCAL","ADD","SUB","MUL","DIV","MOD","NEG","EQ","NEQ","LT","GT","LE","GE",
+"NOT","JMP","JMPIFFALSE","JMPIFTRUE","CALL","RET","MAKEARRAY","INDEX","STOREINDEX","PUSHINT"};
+
+static void disassemble(Program* pr){
+    printf("consts=%d  funcs=%d  main=%d\n", pr->constCount, pr->funcCount, pr->mainIndex);
+    for(int f=0; f<pr->funcCount; f++){
+        Func* fn=&pr->funcs[f];
+        printf("fn#%d %s/%d (locals=%d, code=%d)\n", f, fn->name, fn->arity, fn->localCount, fn->codeCount);
+        for(int i=0;i<fn->codeCount;i++){
+            int op=fn->code[i].op;
+            const char* nm = (op>=0&&op<=31)?OPNAME[op]:"?";
+            printf("  %4d: %-12s %d\n", i, nm, fn->code[i].arg);
+        }
+    }
+}
+
 int main(int argc, char** argv){
-    if(argc<2){ fprintf(stderr,"usage: orivm <file.orx|file.orb> [args...]\n"); return 1; }
+    if(argc<2){ fprintf(stderr,"usage: orivm <file.orx|file.orb> [args...]\n       orivm dis <file>\n"); return 1; }
     build_perm();
-    size_t n; uint8_t* img=read_all(argv[1],&n);
+    if(strcmp(argv[1],"pack")==0){
+        if(argc<4){ fprintf(stderr,"usage: orivm pack <in.orb> <out.orx>\n"); return 1; }
+        return do_pack(argv[2],argv[3]);
+    }
+    int disMode = (strcmp(argv[1],"dis")==0);
+    const char* path = disMode ? argv[2] : argv[1];
+    size_t n; uint8_t* img=read_all(path,&n);
     Program* prog;
     if(n>=4 && memcmp(img,"ORIX",4)==0) prog=load_orx(img,n);
     else if(n>=4 && memcmp(img,"ORB1",4)==0) prog=load_orb(img,n);
     else die("unknown image format (expected .orx or .orb)");
+    if(disMode){ disassemble(prog); return 0; }
 
     VM vm; memset(&vm,0,sizeof vm);
     vm.prog=prog;
