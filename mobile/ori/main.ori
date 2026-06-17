@@ -1,16 +1,44 @@
-// mobile/ori/main.ori — the Ori program bundled into the Android APK.
-// It runs on the native C VM (libori.so) via JNI; output shows in the app.
+// mobile/ori/main.ori — the Todo model for the Android app (same as web/desktop).
+// The Android Activity calls add/toggle/remove/view over JNI and renders the list.
 
-fold fib n {
-    when n < 2 { give n }
-    give fib (n - 1) + fib (n - 2)
+hold todos = []      // each item is [doneFlag, text]
+
+fold view s {
+    hold out = ""
+    hold i = 0
+    loop i < len todos {
+        hold item = todos[i]
+        out = out + str i + "|" + str (item[0]) + "|" + item[1] + chr 10
+        i = i + 1
+    }
+    give out
 }
 
-say "Ori VM running on Android!"
-say "(the same C VM as desktop, cross-compiled to native code)"
-say ""
-hold i = 0
-loop i < 15 {
-    say ("fib " + str i + " = " + str (fib i))
-    i = i + 1
+fold add text {
+    push (todos, [0, text])
+    give view ""
 }
+
+fold toggle s {
+    hold idx = num s
+    when idx >= 0 && idx < len todos {
+        hold item = todos[idx]
+        when item[0] == 0 { item[0] = 1 } else { item[0] = 0 }
+    }
+    give view ""
+}
+
+fold remove s {
+    hold idx = num s
+    hold kept = []
+    hold i = 0
+    loop i < len todos {
+        when i != idx { push (kept, todos[i]) }
+        i = i + 1
+    }
+    todos = kept
+    give view ""
+}
+
+add "Learn the Ori language"
+add "Run this todo app on Android"

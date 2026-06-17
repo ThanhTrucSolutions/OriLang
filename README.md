@@ -130,14 +130,21 @@ ori build mobile         ::  builds mobile/build/mobile.apk, then:
                          ::    adb install -r mobile\build\mobile.apk
 ```
 
-### Native GUI apps
+### The same Todo app on every platform
 
-- **Windows** — [desktop/](desktop) is a real Win32 window (text box + list +
-  Add/Toggle/Delete) whose todo logic is the Ori model running on the C VM
-  embedded in [platforms/win/oriwin.c](platforms/win/oriwin.c).
-- **Android** — [mobile/](mobile) builds an installable APK. The C VM is
-  cross-compiled to a native `.so` with the NDK and called over JNI
-  ([platforms/android/](platforms/android)); the Ori program runs on-device.
+The Todo app (add / toggle done / delete) is one Ori model
+(`add`/`toggle`/`remove`/`view` over a `todos` array) reused across all GUI
+platforms — only the thin "view" differs:
+
+- **Web** — [todo/](todo): the view is `web/index.html`; the model runs in WASM,
+  driven by `ori_call_str` from JS.
+- **Windows** — [desktop/](desktop): a real Win32 window
+  ([platforms/win/oriwin.c](platforms/win/oriwin.c)) embedding the C VM.
+- **Android** — [mobile/](mobile): a real installable APK. The C VM is
+  cross-compiled to a native `.so` (NDK) and called over JNI
+  ([platforms/android/](platforms/android)); the Java Activity is just the view.
+
+Same `ori/main.ori` model, three native front-ends.
 
 ### The Todo app (GUI) — [todo/](todo)
 
