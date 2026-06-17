@@ -1,0 +1,9 @@
+hold IS_WIN = env("ORI_WIN") == "1"
+hold SEP = "/"
+when IS_WIN { SEP = "\\" }
+fold jp a b { give a + SEP + b }
+hold proj = argv(0)
+hold pattern = jp(proj, "*.meta")
+say("pattern=" + pattern)
+hold files = glob(pattern)
+say("nfiles=" + str(len(files)))

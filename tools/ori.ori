@@ -1,0 +1,670 @@
+// ============================================================================
+//  ori.ori — the Ori toolchain CLI, written in Ori.
+//
+//  Invoked by the thin C bootstrap (tools/ori.c) as:
+//      orivm tools/ori.orb  <cmd>  [args...]
+//
+//  Environment (set by the C bootstrap):
+//      ORI_HOME   path to the toolchain root (where ori.exe lives)
+//      ORI_WIN    "1" on Windows, absent on Linux/macOS
+// ============================================================================
+
+// ===== TOOLCHAIN PATHS =====
+hold HOME   = env("ORI_HOME")
+hold IS_WIN = env("ORI_WIN") == "1"
+hold SEP    = "/"
+when IS_WIN { SEP = "\\" }
+
+fold jp a b { give a + SEP + b }
+
+hold VM_EXE    = jp(jp(HOME, "core"), "orivm")
+hold COMPILER  = jp(jp(HOME, "tools"), "oric.orb")
+hold PLATFORMS = jp(HOME, "platforms")
+hold TOOLS_WEB = jp(jp(HOME, "tools"), "web")
+
+when IS_WIN { VM_EXE = VM_EXE + ".exe" }
+
+// ===== STRING UTILITIES =====
+fold trim_ws s {
+    hold start = 0
+    loop start < len(s) && (char_at(s, start) == " " || char_at(s, start) == "\t" || char_at(s, start) == "\r" || char_at(s, start) == "\n") {
+        start = start + 1
+    }
+    s = substr(s, start, len(s) - start)
+    hold end = len(s) - 1
+    loop end >= 0 && (char_at(s, end) == " " || char_at(s, end) == "\t" || char_at(s, end) == "\r" || char_at(s, end) == "\n") {
+        end = end - 1
+    }
+    give substr(s, 0, end + 1)
+}
+
+fold str_find_char s ch {
+    hold i = 0
+    loop i < len(s) {
+        when char_at(s, i) == ch { give i }
+        i = i + 1
+    }
+    give -1
+}
+
+fold str_starts_with s prefix {
+    when len(s) < len(prefix) { give no }
+    give substr(s, 0, len(prefix)) == prefix
+}
+
+fold str_replace_all s old_ch new_ch {
+    hold out = ""
+    hold i = 0
+    loop i < len(s) {
+        when char_at(s, i) == old_ch { out = out + new_ch }
+        else { out = out + char_at(s, i) }
+        i = i + 1
+    }
+    give out
+}
+
+fold to_native_sep s {
+    when IS_WIN { give str_replace_all(s, "/", "\\") }
+    give s
+}
+
+fold jp3 a b c { give jp(jp(a, b), c) }
+fold jp4 a b c d { give jp(jp(jp(a, b), c), d) }
+
+// ===== FILE UTILITIES =====
+fold write_text path content {
+    write_file(path, content)
+}
+
+fold ensure_dir path {
+    mkdirs(to_native_sep(path))
+}
+
+// Read *.meta file from project dir; returns array [name,ver,entry,platform,ui]
+// or none if not found.
+fold meta_find_file proj {
+    hold pattern = jp(proj, "*.meta")
+    hold files   = glob(to_native_sep(pattern))
+    when len(files) == 0 { give "" }
+    give files[0]
+}
+
+fold parse_meta_line line {
+    // Returns [key, value] or none
+    hold ci = str_find_char(line, ":")
+    when ci <= 0 { give none }
+    hold k = trim_ws(substr(line, 0, ci))
+    hold v = trim_ws(substr(line, ci + 1, len(line) - ci - 1))
+    when len(k) == 0 { give none }
+    give [k, v]
+}
+
+fold read_meta proj {
+    hold path = meta_find_file(proj)
+    when path == "" {
+        say("ori: no *.meta in " + proj)
+        give none
+    }
+    hold content = read_file(path)
+    hold m_name     = "app"
+    hold m_ver      = "1.0.0"
+    hold m_entry    = "ori/main.ori"
+    hold m_platform = "windows"
+    hold m_ui       = "console"
+    // parse line by line
+    hold pos = 0
+    hold n   = len(content)
+    loop pos <= n {
+        // find next newline
+        hold nl = pos
+        loop nl < n && char_at(content, nl) != "\n" { nl = nl + 1 }
+        hold line = trim_ws(substr(content, pos, nl - pos))
+        when len(line) > 0 && char_at(line, 0) != "#" {
+            hold kv = parse_meta_line(line)
+            when kv != none {
+                when kv[0] == "name"     { m_name     = kv[1] }
+                else when kv[0] == "version"  { m_ver      = kv[1] }
+                else when kv[0] == "entry"    { m_entry    = kv[1] }
+                else when kv[0] == "platform" { m_platform = kv[1] }
+                else when kv[0] == "ui"       { m_ui       = kv[1] }
+            }
+        }
+        pos = nl + 1
+    }
+    give [m_name, m_ver, m_entry, m_platform, m_ui]
+}
+
+// ===== PLATFORM DETECTION =====
+fold is_mini platform {
+    give platform == "wechat-mini-program" || platform == "alipay-mini-program" ||
+         platform == "zalo-mini-app"       || platform == "telegram-mini-app"   ||
+         platform == "line-mini-app"       || platform == "grab-mini-app"       ||
+         platform == "momo-mini-app"       || platform == "chrome-extension"
+}
+
+fold is_web_shell platform {
+    give platform == "zalo-mini-app"    || platform == "telegram-mini-app" ||
+         platform == "line-mini-app"    || platform == "grab-mini-app"     ||
+         platform == "momo-mini-app"
+}
+
+// ===== COMPILE =====
+fold compile_orb proj m_entry proj_name {
+    hold entry     = to_native_sep(jp(proj, m_entry))
+    hold build_dir = to_native_sep(jp(proj, "build"))
+    ensure_dir(build_dir)
+    hold orb = to_native_sep(jp(build_dir, "app.orb"))
+    hold rc  = run(VM_EXE, [COMPILER, entry, orb])
+    when rc != 0 { give "" }
+    give orb
+}
+
+// ===== DOCTOR =====
+fold cmd_doctor {
+    say("ori doctor")
+    when exists(VM_EXE) { say("  [ok] native VM      " + VM_EXE) }
+    else {
+        say("  [!!] native VM missing: " + VM_EXE)
+        say("       Run build.cmd (Windows) or sh build.sh first.")
+        give 1
+    }
+    when exists(COMPILER) { say("  [ok] Ori compiler   tools/oric.orb (self-hosted)") }
+    else { say("  [!!] Ori compiler missing: " + COMPILER); give 1 }
+    hold wasm = jp(TOOLS_WEB, "orivm.wasm")
+    when exists(wasm) { say("  [ok] web runtime    tools/web/orivm.wasm") }
+    else { say("  [..] web runtime    not built (only for `ori run` on web platform)") }
+    say("  Toolchain ready.")
+    give 0
+}
+
+// ===== CREATE =====
+fold cmd_create proj_name platform {
+    hold ori_dir  = jp(proj_name, "ori")
+    hold main_ori = jp(ori_dir, "main.ori")
+    ensure_dir(ori_dir)
+    when is_mini(platform) {
+        write_text(main_ori,
+"// " + proj_name + " — mini-app model in Ori.\n" +
+"// The host renders render() and dispatches events to dispatch(ev, arg).\n" +
+"hold todos = []\n\n" +
+"fold render {\n" +
+"    hold s = \"text|" + proj_name + chr(10) + "\"\n" +
+"    s = s + \"text|Logic written in Ori, compiled to .orb" + chr(10) + "\"\n" +
+"    s = s + \"edit|What needs doing?" + chr(10) + "\"\n" +
+"    s = s + \"btn|add|@edit|Add" + chr(10) + "\"\n" +
+"    hold i = 0\n" +
+"    loop i < len(todos) {\n" +
+"        hold it = todos[i]\n" +
+"        hold mark = \"[ ] \"\n" +
+"        when it[0] == 1 { mark = \"[x] \" }\n" +
+"        s = s + \"item|toggle|del|\" + str(i) + \"|\" + mark + it[1] + chr(10)\n" +
+"        i = i + 1\n" +
+"    }\n" +
+"    give s\n" +
+"}\n\n" +
+"fold dispatch ev arg {\n" +
+"    when ev == \"add\" {\n" +
+"        when len(arg) > 0 { push(todos, [0, arg]) }\n" +
+"    } else when ev == \"toggle\" {\n" +
+"        hold idx = num(arg)\n" +
+"        when idx >= 0 && idx < len(todos) {\n" +
+"            when todos[idx][0] == 0 { todos[idx][0] = 1 } else { todos[idx][0] = 0 }\n" +
+"        }\n" +
+"    } else when ev == \"del\" {\n" +
+"        hold idx = num(arg)\n" +
+"        hold kept = []\n" +
+"        hold i = 0\n" +
+"        loop i < len(todos) {\n" +
+"            when i != idx { push(kept, todos[i]) }\n" +
+"            i = i + 1\n" +
+"        }\n" +
+"        todos = kept\n" +
+"    }\n" +
+"    give render()\n" +
+"}\n\n" +
+"push(todos, [0, \"Learn Ori\"])\n" +
+"push(todos, [0, \"Build everywhere\"])\n")
+    } else {
+        write_text(main_ori,
+"// " + proj_name + "/ori/main.ori\n" +
+"// Run: ori run (or ori dev for hot reload)\n\n" +
+"fold fib n {\n" +
+"    when n < 2 { give n }\n" +
+"    give fib(n - 1) + fib(n - 2)\n" +
+"}\n\n" +
+"hold i = 0\n" +
+"loop i < 12 {\n" +
+"    say(\"fib(\" + str(i) + \") = \" + str(fib(i)))\n" +
+"    i = i + 1\n" +
+"}\n" +
+"say \"Hello from Ori!\"\n")
+    }
+    hold meta_path = jp(proj_name, proj_name + ".meta")
+    write_text(meta_path,
+"name: " + proj_name + "\n" +
+"version: 1.0.0\n" +
+"entry: ori/main.ori\n" +
+"platform: " + platform + "\n\n" +
+"# Add dependencies here.\n" +
+"dependencies:\n")
+    say("Created project '" + proj_name + "' (platform: " + platform + ")")
+    say("  cd " + proj_name + " && ori run")
+    give 0
+}
+
+// ===== RUN CONSOLE =====
+fold run_console proj m {
+    hold orb = compile_orb(proj, m[2], m[0])
+    when orb == "" { say("ori: compile failed"); give 1 }
+    say("ori: running on the native C VM\n----------------------------------------")
+    give run(VM_EXE, [orb])
+}
+
+// ===== DEV (HOT RELOAD) =====
+fold dev_loop proj m {
+    hold entry = to_native_sep(jp(proj, m[2]))
+    say("ori dev: hot reload — watching " + m[2] + " (Ctrl+C to stop)")
+    hold last = 0
+    loop yes {
+        hold t = mtime(entry)
+        when t != last {
+            last = t
+            say("\n========== ori dev: reload ==========")
+            hold orb = compile_orb(proj, m[2], m[0])
+            when orb != "" {
+                say("----------------------------------------")
+                run(VM_EXE, [orb])
+            }
+        }
+        sleep_ms(400)
+    }
+    give 0
+}
+
+// ===== WEB =====
+fold run_web proj m {
+    hold wasm = jp(TOOLS_WEB, "orivm.wasm")
+    when !exists(wasm) {
+        say("ori: web runtime missing (tools/web/orivm.wasm). See docs/TOOLCHAIN.md.")
+        give 1
+    }
+    hold web_build = to_native_sep(jp3(proj, "build", "web"))
+    ensure_dir(web_build)
+    copy(to_native_sep(jp(TOOLS_WEB, "orivm.js")),   to_native_sep(jp(web_build, "orivm.js")))
+    copy(to_native_sep(jp(TOOLS_WEB, "orivm.wasm")), to_native_sep(jp(web_build, "orivm.wasm")))
+    // Copy index.html from project web/ or from platforms/web template
+    hold proj_index = to_native_sep(jp3(proj, "web", "index.html"))
+    hold dst_index  = to_native_sep(jp(web_build, "index.html"))
+    when exists(proj_index) { copy(proj_index, dst_index) }
+    else {
+        hold tmpl = to_native_sep(jp3(PLATFORMS, "web", "index.html"))
+        when exists(tmpl) { copy(tmpl, dst_index) }
+    }
+    hold server = to_native_sep(jp3(PLATFORMS, "web", "server.mjs"))
+    say("ori: serving web app at http://127.0.0.1:5151 (hot reload)")
+    give run("node", [server, web_build, proj, VM_EXE, COMPILER, "5151"])
+}
+
+fold build_web proj m {
+    hold orb = compile_orb(proj, m[2], m[0])
+    when orb == "" { say("ori: compile failed"); give 1 }
+    hold wasm = jp(TOOLS_WEB, "orivm.wasm")
+    when !exists(wasm) {
+        say("ori: web runtime missing. See docs/TOOLCHAIN.md.")
+        give 1
+    }
+    hold out_dir = to_native_sep(jp3(proj, "build", "web"))
+    ensure_dir(out_dir)
+    copy(to_native_sep(jp(TOOLS_WEB, "orivm.js")),   to_native_sep(jp(out_dir, "orivm.js")))
+    copy(to_native_sep(jp(TOOLS_WEB, "orivm.wasm")), to_native_sep(jp(out_dir, "orivm.wasm")))
+    copy(to_native_sep(orb),                          to_native_sep(jp(out_dir, "app.orb")))
+    hold proj_index = to_native_sep(jp3(proj, "web", "index.html"))
+    hold dst_index  = to_native_sep(jp(out_dir, "index.html"))
+    when exists(proj_index) { copy(proj_index, dst_index) }
+    else {
+        hold tmpl = to_native_sep(jp3(PLATFORMS, "web", "index.html"))
+        when exists(tmpl) { copy(tmpl, dst_index) }
+    }
+    say("ori: web bundle -> " + out_dir)
+    say("     Serve with any static HTTP server.")
+    give 0
+}
+
+// ===== WIN32 GUI =====
+fold run_win_window proj m {
+    hold orb = compile_orb(proj, m[2], m[0])
+    when orb == "" { say("ori: compile failed"); give 1 }
+    hold gui = to_native_sep(jp3(PLATFORMS, "win", "oriwin.exe"))
+    when !exists(gui) {
+        say("ori: Win32 GUI host not built. Run build.cmd first.")
+        give 1
+    }
+    say("ori: launching native Win32 window")
+    give run(gui, [orb])
+}
+
+// ===== ANDROID =====
+fold build_android proj m {
+    hold orb = compile_orb(proj, m[2], m[0])
+    when orb == "" { say("ori: compile failed"); give 1 }
+    hold apk    = to_native_sep(jp3(proj, "build", m[0] + ".apk"))
+    hold script = to_native_sep(jp3(PLATFORMS, "android", "build-apk.cmd"))
+    when !exists(script) {
+        say("ori: Android build script not found: " + script)
+        give 1
+    }
+    say("ori: building Android APK...")
+    hold rc = run("cmd", ["/c", script, orb, apk])
+    when rc == 0 {
+        say("ori: android APK -> " + apk)
+        say("     Install: adb install -r \"" + apk + "\"")
+    }
+    give rc
+}
+
+fold run_android proj m {
+    hold rc = build_android(proj, m)
+    when rc != 0 { give rc }
+    hold apk = to_native_sep(jp3(proj, "build", m[0] + ".apk"))
+    hold lad = env("LOCALAPPDATA")
+    hold adb = lad + "\\Android\\Sdk\\platform-tools\\adb.exe"
+    when !exists(adb) {
+        say("ori: adb not found. Install manually: adb install -r \"" + apk + "\"")
+        give 0
+    }
+    say("ori: installing + launching on device/emulator...")
+    run(adb, ["install", "-r", apk])
+    hold rc2 = run(adb, ["shell", "am", "start", "-n", "ori.app/.MainActivity"])
+    when rc2 == 0 { say("ori: launched ori.app on device.") }
+    else { say("ori: no device/emulator? start one, then: adb install -r \"" + apk + "\"") }
+    give 0
+}
+
+// ===== iOS =====
+fold build_ios proj m launch {
+    hold orb    = compile_orb(proj, m[2], m[0])
+    when orb == "" { say("ori: compile failed"); give 1 }
+    hold ios_dir = to_native_sep(jp3(proj, "build", "ios"))
+    ensure_dir(ios_dir)
+    hold out    = to_native_sep(jp(ios_dir, m[0] + ".app"))
+    hold bundle = "ori." + m[0]
+    hold script = jp3(PLATFORMS, "ios", "build-sim.sh")
+    hold flag   = "--build-only"
+    when launch { flag = "--launch" }
+    hold rc = run("sh", [script, orb, out, m[0], bundle, flag])
+    when rc == 0 { say("ori: iOS app -> " + out) }
+    give rc
+}
+
+// ===== macOS =====
+fold build_macos proj m launch {
+    hold orb    = compile_orb(proj, m[2], m[0])
+    when orb == "" { say("ori: compile failed"); give 1 }
+    hold mac_dir = to_native_sep(jp3(proj, "build", "macos"))
+    ensure_dir(mac_dir)
+    hold out    = to_native_sep(jp(mac_dir, m[0] + ".app"))
+    hold script = jp3(PLATFORMS, "macos", "build-app.sh")
+    hold rc     = run("sh", [script, orb, out, m[0]])
+    when rc == 0 {
+        say("ori: macOS app -> " + out)
+        when launch { run("open", [out]) }
+    }
+    give rc
+}
+
+fold build_linux proj m {
+    hold orb     = compile_orb(proj, m[2], m[0])
+    when orb == "" { say("ori: compile failed"); give 1 }
+    hold linux_vm = jp3(HOME, "core", "orivm")
+    when !exists(linux_vm) {
+        say("ori: linux bundle needs core/orivm. Build on Linux with `sh build.sh`.")
+        give 1
+    }
+    hold out_dir = to_native_sep(jp4(proj, "build", "linux", m[0]))
+    ensure_dir(out_dir)
+    copy(to_native_sep(orb),      to_native_sep(jp(out_dir, "app.orb")))
+    copy(to_native_sep(linux_vm), to_native_sep(jp(out_dir, "orivm")))
+    hold run_sh  = to_native_sep(jp(out_dir, "run.sh"))
+    write_text(run_sh,
+"#!/usr/bin/env sh\n" +
+"DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n" +
+"exec \"$DIR/orivm\" \"$DIR/app.orb\" \"$@\"\n")
+    say("ori: linux bundle -> " + out_dir)
+    give 0
+}
+
+// ===== APP IMAGE (for mini apps) =====
+fold write_app_image_module orb out_path {
+    hold b64 = read_bytes_b64(orb)
+    hold js  = "const base64 =\n"
+    hold pos = 0
+    hold n   = len(b64)
+    loop pos < n {
+        hold chunk = 76
+        when pos + chunk > n { chunk = n - pos }
+        hold line = substr(b64, pos, chunk)
+        when pos + chunk < n { js = js + "  \"" + line + "\" +\n" }
+        else { js = js + "  \"" + line + "\";\n" }
+        pos = pos + chunk
+    }
+    when n == 0 { js = js + "  \"\";\n" }
+    js = js + "if (typeof module === \"object\" && module.exports) module.exports = { base64 };\n"
+    js = js + "if (typeof globalThis !== \"undefined\") globalThis.ORI_APP_IMAGE_BASE64 = base64;\n"
+    write_text(out_path, js)
+    give 0
+}
+
+fold copy_mini_shared out_dir orb {
+    hold shared  = to_native_sep(jp3(PLATFORMS, "mini", "shared"))
+    hold ori_dir = to_native_sep(jp(out_dir, "ori"))
+    ensure_dir(ori_dir)
+    copy(to_native_sep(jp(shared, "ori-mini-vm.js")), to_native_sep(jp(ori_dir, "ori-mini-vm.js")))
+    copy(to_native_sep(jp(shared, "ori-mini-ui.js")), to_native_sep(jp(ori_dir, "ori-mini-ui.js")))
+    give write_app_image_module(orb, to_native_sep(jp(ori_dir, "app-image.js")))
+}
+
+fold copy_mini_template out_dir template_name files {
+    hold base = to_native_sep(jp3(PLATFORMS, "mini", template_name))
+    hold i = 0
+    loop i < len(files) {
+        hold src = to_native_sep(jp(base, files[i]))
+        hold dst = to_native_sep(jp(out_dir, files[i]))
+        // ensure parent dir of dst
+        hold di = len(dst) - 1
+        loop di > 0 && char_at(dst, di) != SEP { di = di - 1 }
+        when di > 0 { ensure_dir(substr(dst, 0, di)) }
+        when !exists(src) {
+            say("ori: missing template file: " + src)
+            give 1
+        }
+        copy(src, dst)
+        i = i + 1
+    }
+    give 0
+}
+
+fold write_web_shell_index out_dir platform m_name {
+    hold sdk  = ""
+    hold init = ""
+    when platform == "telegram-mini-app" {
+        sdk = "<script src=\"https://telegram.org/js/telegram-web-app.js\"></script>\n"
+    }
+    when platform == "line-mini-app" {
+        sdk  = "<script charset=\"utf-8\" src=\"https://static.line-scdn.net/liff/edge/2/sdk.js\"></script>\n"
+        init = "<script>window.ORI_LINE_LIFF_ID = \"\";</script>\n"
+    }
+    hold html =
+"<!doctype html>\n" +
+"<html lang=\"en\" data-platform=\"" + platform + "\">\n" +
+"<head>\n" +
+"<meta charset=\"utf-8\" />\n" +
+"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n" +
+"<title>" + m_name + "</title>\n" +
+"<link rel=\"stylesheet\" href=\"app.css\" />\n" +
+sdk + init +
+"</head>\n" +
+"<body>\n" +
+"  <div id=\"app\">Loading Ori app...</div>\n" +
+"  <script src=\"ori/app-image.js\"></script>\n" +
+"  <script src=\"ori/ori-mini-vm.js\"></script>\n" +
+"  <script src=\"ori/ori-mini-ui.js\"></script>\n" +
+"  <script src=\"app.js\"></script>\n" +
+"</body>\n" +
+"</html>\n"
+    write_text(to_native_sep(jp(out_dir, "index.html")), html)
+    give 0
+}
+
+fold write_chrome_popup out_dir m_name {
+    hold manifest =
+"{\n" +
+"  \"manifest_version\": 3,\n" +
+"  \"name\": \"" + m_name + "\",\n" +
+"  \"version\": \"1.0.0\",\n" +
+"  \"action\": {\n" +
+"    \"default_title\": \"" + m_name + "\",\n" +
+"    \"default_popup\": \"popup.html\"\n" +
+"  },\n" +
+"  \"permissions\": []\n" +
+"}\n"
+    write_text(to_native_sep(jp(out_dir, "manifest.json")), manifest)
+    hold popup =
+"<!doctype html>\n" +
+"<html lang=\"en\" data-platform=\"chrome-extension\">\n" +
+"<head>\n" +
+"<meta charset=\"utf-8\" />\n" +
+"<title>" + m_name + "</title>\n" +
+"<link rel=\"stylesheet\" href=\"app.css\" />\n" +
+"</head>\n" +
+"<body>\n" +
+"  <div id=\"app\">Loading Ori app...</div>\n" +
+"  <script src=\"ori/app-image.js\"></script>\n" +
+"  <script src=\"ori/ori-mini-vm.js\"></script>\n" +
+"  <script src=\"ori/ori-mini-ui.js\"></script>\n" +
+"  <script src=\"app.js\"></script>\n" +
+"</body>\n" +
+"</html>\n"
+    write_text(to_native_sep(jp(out_dir, "popup.html")), popup)
+    give 0
+}
+
+fold build_mini proj m {
+    hold orb = compile_orb(proj, m[2], m[0])
+    when orb == "" { say("ori: compile failed"); give 1 }
+    hold platform = m[3]
+    hold out_dir  = to_native_sep(jp3(proj, "build", platform))
+    ensure_dir(out_dir)
+    hold rc = copy_mini_shared(out_dir, orb)
+    when rc != 0 { give rc }
+    when platform == "wechat-mini-program" {
+        hold files = ["app.js", "app.json", "app.wxss", "project.config.json",
+                      "pages/index/index.js", "pages/index/index.json",
+                      "pages/index/index.wxml", "pages/index/index.wxss"]
+        rc = copy_mini_template(out_dir, "wechat", files)
+    } else when platform == "alipay-mini-program" {
+        hold files = ["app.js", "app.json", "app.acss", "mini.project.json",
+                      "pages/index/index.js", "pages/index/index.json",
+                      "pages/index/index.axml", "pages/index/index.acss"]
+        rc = copy_mini_template(out_dir, "alipay", files)
+    } else when is_web_shell(platform) {
+        hold files = ["app.css", "app.js"]
+        rc = copy_mini_template(out_dir, "web-shell", files)
+        when rc == 0 { rc = write_web_shell_index(out_dir, platform, m[0]) }
+    } else when platform == "chrome-extension" {
+        hold files = ["app.css", "app.js"]
+        rc = copy_mini_template(out_dir, "web-shell", files)
+        when rc == 0 { rc = write_chrome_popup(out_dir, m[0]) }
+    }
+    when rc != 0 { give rc }
+    say("ori: " + platform + " -> " + out_dir)
+    when platform == "wechat-mini-program" { say("     Open with WeChat DevTools.") }
+    else when platform == "alipay-mini-program" { say("     Open with Alipay Mini Program Studio.") }
+    else when platform == "chrome-extension" { say("     Load unpacked from chrome://extensions.") }
+    else { say("     Publish this folder with the official " + platform + " tooling.") }
+    give 0
+}
+
+// ===== USAGE =====
+fold usage {
+    say("Ori toolchain  (C VM + self-hosted Ori compiler)")
+    say("  ori create <name> [windows|web|android|linux|macos|ios")
+    say("                     wechat-mini-program|alipay-mini-program")
+    say("                     zalo-mini-app|telegram-mini-app|line-mini-app")
+    say("                     grab-mini-app|momo-mini-app|chrome-extension]")
+    say("  ori run    [path]           compile + run")
+    say("  ori dev    [path]           hot reload")
+    say("  ori build  [path] [release] platform build / encrypted .orx")
+    say("  ori doctor                  check toolchain")
+    say("  ori version")
+}
+
+// ===== DISPATCH =====
+hold ORI_CMD  = ""
+hold ORI_ARG  = "."
+hold ORI_ARG2 = ""
+when argc() > 0 { ORI_CMD  = argv(0) }
+when argc() > 1 { ORI_ARG  = argv(1) }
+when argc() > 2 { ORI_ARG2 = argv(2) }
+
+when ORI_CMD == "version" {
+    say("Ori toolchain 0.7  (C VM + Ori-written CLI)")
+} else when ORI_CMD == "doctor" {
+    cmd_doctor()
+} else when ORI_CMD == "create" {
+    when ORI_ARG == "." {
+        say("usage: ori create <name> [platform]")
+    } else {
+        hold plat = "windows"
+        when ORI_ARG2 != "" { plat = ORI_ARG2 }
+        cmd_create(ORI_ARG, plat)
+    }
+} else when ORI_CMD == "run" || ORI_CMD == "dev" || ORI_CMD == "build" {
+    hold proj = abspath(to_native_sep(ORI_ARG))
+    hold m    = read_meta(proj)
+    when m == none {
+        say("ori: not an Ori project (no *.meta file)")
+    } else {
+        hold platform = m[3]
+        hold ui       = m[4]
+        hold is_hot   = ORI_CMD == "dev"
+        hold is_build = ORI_CMD == "build"
+        hold is_release = ORI_ARG2 == "release"
+        when platform == "web" {
+            when is_build { build_web(proj, m) }
+            else { run_web(proj, m) }
+        } else when platform == "android" {
+            when is_build { build_android(proj, m) }
+            else { run_android(proj, m) }
+        } else when platform == "ios" {
+            build_ios(proj, m, !is_build)
+        } else when platform == "macos" {
+            when ui == "window" { build_macos(proj, m, !is_build) }
+            else { build_linux(proj, m) }
+        } else when platform == "linux" {
+            build_linux(proj, m)
+        } else when is_mini(platform) {
+            build_mini(proj, m)
+        } else when platform == "windows" && ui == "window" {
+            run_win_window(proj, m)
+        } else {
+            // windows console (default) or any unrecognised platform
+            when is_hot { dev_loop(proj, m) }
+            else when is_build {
+                hold orb = compile_orb(proj, m[2], m[0])
+                when orb != "" {
+                    when is_release {
+                        hold orx = to_native_sep(jp3(proj, "build", "app.orx"))
+                        hold rc  = run(VM_EXE, ["pack", orb, orx])
+                        when rc == 0 { say("ori: release build -> " + orx + " (encrypted)") }
+                    } else {
+                        say("ori: built " + orb)
+                    }
+                }
+            } else {
+                run_console(proj, m)
+            }
+        }
+    }
+} else {
+    usage()
+}

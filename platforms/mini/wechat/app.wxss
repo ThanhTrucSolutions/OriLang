@@ -1,0 +1,5 @@
+page {
+  background: #0f1116;
+  color: #e6e9f0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}

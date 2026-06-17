@@ -1,0 +1,7 @@
+name: zalo-mini-app
+version: 1.0.0
+entry: ori/main.ori
+platform: zalo-mini-app
+
+# `ori build samples/zalo-mini-app` creates build/zalo-mini-app.
+dependencies:

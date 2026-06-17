@@ -13,7 +13,7 @@ Ori is built from two parts and a thin CLI — no .NET, no third runtime:
   Ori. It runs on the C VM, so **Ori compiles Ori**. The parser is parenthesis-
   free (juxtaposition application) and also accepts the legacy `f(a,b)` style.
 - **`ori` CLI** — native [tooling/ori.c](../tooling/ori.c) → `ori.exe` (no .NET).
-  Bootstrap both binaries with `build.cmd`.
+  Bootstrap both binaries with `build.cmd` on Windows or `sh build.sh` on Linux/macOS.
 
 ## Self-hosting & the bootstrap
 
@@ -47,14 +47,14 @@ myapp/
 name: myapp
 version: 1.0.0
 entry: ori/main.ori
-platform: windows        # windows | web | android
+platform: windows        # windows | web | android | linux | macos | ios | wechat-mini-program | zalo-mini-app | telegram-mini-app | alipay-mini-program | line-mini-app | grab-mini-app | momo-mini-app | chrome-extension
 dependencies:
 ```
 
 ## `ori` commands (native ori.exe)
 
 ```
-ori create <name> [windows|web|android]
+ori create <name> [windows|web|android|linux|macos|ios|wechat-mini-program|zalo-mini-app|telegram-mini-app|alipay-mini-program|line-mini-app|grab-mini-app|momo-mini-app|chrome-extension]
 ori run   [path]             compile + run (web: live dev server with hot reload)
 ori dev   [path]             hot reload (watch + recompile + rerun)
 ori build [path] [release]   build/app.orb  (release: encrypted build/app.orx)
@@ -76,20 +76,29 @@ See [todo/](../todo) for a complete GUI todo app.
 ## Platforms
 
 - **Windows (native).** `orivm.exe app.orb`. Hot reload via `ori dev`.
+- **Linux (native).** `ori build` for `platform: linux` creates a native bundle
+  with `orivm`, `app.orb`, and `run.sh` from `platforms/linux/`. Build on Linux
+  with `sh build.sh`, or package from another host when `core/orivm` is already
+  a Linux binary.
+- **macOS (native).** `ori build` for `platform: macos` creates a native console
+  bundle, or an AppKit `.app` when the manifest also has `ui: window`.
 - **Web.** `core/orivm.c` is compiled to WebAssembly with Emscripten
-  (`tooling/web/orivm.js` + `orivm.wasm`, shipped prebuilt). `ori run` on a
-  `platform: web` project serves a dev server (Node) that recompiles `ori/` on
+  (`tools/web/orivm.js` + `orivm.wasm`, shipped prebuilt). `ori build` for
+  `platform: web` emits a static bundle in `build/web` using `platforms/web/`.
+  `ori run` on a `platform: web` project serves a dev server (Node) that recompiles `ori/` on
   save; the page fetches the new `.orb` and re-runs — hot reload in the browser.
   To rebuild the WASM runtime:
   ```
   emcc core/orivm.c -O2 -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS=callMain,FS \
        -sINVOKE_RUN=0 -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 \
-       -sMODULARIZE=1 -sEXPORT_NAME=createOriVM -o tooling/web/orivm.js
+       -sMODULARIZE=1 -sEXPORT_NAME=createOriVM -o tools/web/orivm.js
   ```
 - **Windows GUI.** A project with `platform: windows` + `ui: window` runs as a
   native Win32 window: `platforms/win/oriwin.c` embeds the C VM and drives an
   Ori "model" (`add`/`toggle`/`remove`/`view`) via `ori_call_str`. `ori run`
   launches it. Sample: `desktop/`.
+- **macOS GUI.** A project with `platform: macos` + `ui: window` builds a native
+  AppKit `.app` using `platforms/macos/orimac.m`. Sample: `desktop-macos/`.
 - **Android.** `ori build <proj>` for `platform: android` builds a real,
   installable **APK** (`platforms/android/build-apk.cmd`): the C VM is
   cross-compiled to `libori.so` with the NDK, called from a small Activity over
@@ -101,6 +110,21 @@ See [todo/](../todo) for a complete GUI todo app.
   ```
   Sample: `mobile/`. The VM exposes `ori_call_str` (and a say-output hook) so
   the same model-driven approach works for interactive Android UIs.
+- **iOS.** `ori build <proj>` for `platform: ios` builds an iOS Simulator `.app`
+  using `platforms/ios/oriios.m`, copies the Ori image into the app bundle, and
+  embeds the same C VM behind a UIKit view. `ori run <proj>` also tries to
+  install and launch it on a booted or available simulator. Sample: `mobile-ios/`.
+- **Mini apps + Chrome extension.** `ori build <proj>` for
+  `platform: wechat-mini-program`, `zalo-mini-app`, `telegram-mini-app`,
+  `alipay-mini-program`, `line-mini-app`, `grab-mini-app`, `momo-mini-app`, or
+  `chrome-extension` compiles `ori/main.ori` to `build/app.orb`, emits that Ori
+  bytecode as `build/<platform>/ori/app-image.js`, and copies the shared
+  JavaScript VM/host bridge from `platforms/mini/shared/`. The app logic stays in
+  Ori; generated JavaScript only loads the `.orb`, renders the generic
+  `render()` widget spec, and forwards UI events to `dispatch(event, arg)`.
+  WeChat and Alipay get native mini-program source layouts; Zalo, Telegram,
+  LINE, Grab, and MoMo get WebView/static source packages; Chrome gets a
+  Manifest V3 popup extension.
 
 ## Image formats
 

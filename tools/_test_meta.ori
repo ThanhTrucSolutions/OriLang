@@ -1,0 +1,11 @@
+﻿hold proj = argv(0)
+say("proj=" + proj)
+hold pattern = proj + "\*.meta"
+say("pattern=" + pattern)
+hold files = glob(pattern)
+say("files len=" + str(len(files)))
+hold i = 0
+loop i < len(files) {
+    say("file=" + files[i])
+    i = i + 1
+}

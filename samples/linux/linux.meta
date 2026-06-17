@@ -1,0 +1,7 @@
+name: linux
+version: 1.0.0
+entry: ori/main.ori
+platform: linux
+
+# `ori build samples/linux` creates build/linux/linux.
+dependencies:
