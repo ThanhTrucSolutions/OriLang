@@ -169,7 +169,10 @@ fold cmd_doctor {
         give 1
     }
     when exists(COMPILER) { say("  [ok] Ori compiler   tools/oric.orb (self-hosted)") }
-    else { say("  [!!] Ori compiler missing: " + COMPILER); give 1 }
+    else {
+        say("  [!!] Ori compiler missing: " + COMPILER)
+        give 1
+    }
     hold wasm = jp(TOOLS_WEB, "orivm.wasm")
     when exists(wasm) { say("  [ok] web runtime    tools/web/orivm.wasm") }
     else { say("  [..] web runtime    not built (only for `ori run` on web platform)") }
@@ -255,7 +258,10 @@ fold cmd_create proj_name platform {
 // ===== RUN CONSOLE =====
 fold run_console proj m {
     hold orb = compile_orb(proj, m[2], m[0])
-    when orb == "" { say("ori: compile failed"); give 1 }
+    when orb == "" {
+        say("ori: compile failed")
+        give 1
+    }
     say("ori: running on the native C VM\n----------------------------------------")
     give run(VM_EXE, [orb])
 }
@@ -307,7 +313,10 @@ fold run_web proj m {
 
 fold build_web proj m {
     hold orb = compile_orb(proj, m[2], m[0])
-    when orb == "" { say("ori: compile failed"); give 1 }
+    when orb == "" {
+        say("ori: compile failed")
+        give 1
+    }
     hold wasm = jp(TOOLS_WEB, "orivm.wasm")
     when !exists(wasm) {
         say("ori: web runtime missing. See docs/TOOLCHAIN.md.")
@@ -333,7 +342,10 @@ fold build_web proj m {
 // ===== WIN32 GUI =====
 fold run_win_window proj m {
     hold orb = compile_orb(proj, m[2], m[0])
-    when orb == "" { say("ori: compile failed"); give 1 }
+    when orb == "" {
+        say("ori: compile failed")
+        give 1
+    }
     hold gui = to_native_sep(jp3(PLATFORMS, "win", "oriwin.exe"))
     when !exists(gui) {
         say("ori: Win32 GUI host not built. Run build.cmd first.")
@@ -346,7 +358,10 @@ fold run_win_window proj m {
 // ===== ANDROID =====
 fold build_android proj m {
     hold orb = compile_orb(proj, m[2], m[0])
-    when orb == "" { say("ori: compile failed"); give 1 }
+    when orb == "" {
+        say("ori: compile failed")
+        give 1
+    }
     hold apk    = to_native_sep(jp3(proj, "build", m[0] + ".apk"))
     hold script = to_native_sep(jp3(PLATFORMS, "android", "build-apk.cmd"))
     when !exists(script) {
@@ -383,7 +398,10 @@ fold run_android proj m {
 // ===== iOS =====
 fold build_ios proj m launch {
     hold orb    = compile_orb(proj, m[2], m[0])
-    when orb == "" { say("ori: compile failed"); give 1 }
+    when orb == "" {
+        say("ori: compile failed")
+        give 1
+    }
     hold ios_dir = to_native_sep(jp3(proj, "build", "ios"))
     ensure_dir(ios_dir)
     hold out    = to_native_sep(jp(ios_dir, m[0] + ".app"))
@@ -399,7 +417,10 @@ fold build_ios proj m launch {
 // ===== macOS =====
 fold build_macos proj m launch {
     hold orb    = compile_orb(proj, m[2], m[0])
-    when orb == "" { say("ori: compile failed"); give 1 }
+    when orb == "" {
+        say("ori: compile failed")
+        give 1
+    }
     hold mac_dir = to_native_sep(jp3(proj, "build", "macos"))
     ensure_dir(mac_dir)
     hold out    = to_native_sep(jp(mac_dir, m[0] + ".app"))
@@ -414,7 +435,10 @@ fold build_macos proj m launch {
 
 fold build_linux proj m {
     hold orb     = compile_orb(proj, m[2], m[0])
-    when orb == "" { say("ori: compile failed"); give 1 }
+    when orb == "" {
+        say("ori: compile failed")
+        give 1
+    }
     hold linux_vm = jp3(HOME, "core", "orivm")
     when !exists(linux_vm) {
         say("ori: linux bundle needs core/orivm. Build on Linux with `sh build.sh`.")
@@ -550,7 +574,10 @@ fold write_chrome_popup out_dir m_name {
 
 fold build_mini proj m {
     hold orb = compile_orb(proj, m[2], m[0])
-    when orb == "" { say("ori: compile failed"); give 1 }
+    when orb == "" {
+        say("ori: compile failed")
+        give 1
+    }
     hold platform = m[3]
     hold out_dir  = to_native_sep(jp3(proj, "build", platform))
     ensure_dir(out_dir)
