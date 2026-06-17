@@ -658,6 +658,18 @@ char* ori_call_str(const char* fname, const char* arg){
     return val_cstr(r);
 }
 
+// Call an Ori function with two string args (e.g. dispatch(event, arg)).
+ORI_EXPORT
+char* ori_call2(const char* fname, const char* a1, const char* a2){
+    Value f;
+    if(!g_get(&gvm, fname, &f) || f.t!=V_FUNC) return dupstr("");
+    Value args[2]; args[0]=vstr(a1?a1:""); args[1]=vstr(a2?a2:"");
+    push_frame(&gvm, f.u.i, args, 2);
+    Value r = run(&gvm);
+    if(r.t==V_STR) return dupstr(r.u.s->d);
+    return val_cstr(r);
+}
+
 #ifndef ORI_AS_LIB
 int main(int argc, char** argv){
     if(argc<2){ fprintf(stderr,"usage: orivm <file.orx|file.orb> [args...]\n       orivm dis <file>\n"); return 1; }
