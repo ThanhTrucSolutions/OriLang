@@ -1,0 +1,85 @@
+@*
+   App.razor — the whole UI. A button that decrypts an embedded program.orx and
+   runs it on the Ori VM, entirely inside the browser (Blazor WebAssembly).
+*@
+<div style="font-family:'Segoe UI',sans-serif; max-width:760px; margin:0 auto; padding:24px; color:#e6e9f0">
+    <h2 style="color:#fff; margin:0 0 4px">Ori VM on the Web</h2>
+    <div style="color:#9aa0aa; font-size:13px; margin-bottom:16px">
+        Blazor WebAssembly &mdash; the Ori VM compiled to WASM, running in your browser.
+    </div>
+
+    <div style="color:#78e6b4; font-family:Consolas,monospace; font-size:18px; font-weight:600; min-height:28px; margin-bottom:16px">
+        @OutputText
+    </div>
+
+    <button @onclick="Run"
+            style="width:100%; padding:16px; font-size:16px; font-weight:600; color:#fff; background:#3078dc; border:none; border-radius:8px; cursor:pointer">
+        ▶ Run Ori VM
+    </button>
+
+    <pre style="background:#0f1116; color:#c8cdd7; padding:14px; border-radius:8px; margin-top:16px; white-space:pre-wrap; min-height:220px; font-size:13px; line-height:1.4">@LogText</pre>
+</div>
+
+@code {
+    private int _clicks;
+    private byte[] _image;
+    private string OutputText = "Click the button to run program.orx on the Ori VM";
+    private string LogText = "";
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            var prog = Compiler.Compile(Source);
+            _image = Container.Pack(prog);
+            Log($"Compiled program.ori -> program.orx ({_image.Length} bytes, ChaCha20 + HMAC encrypted).");
+            Log($"Image header: {System.BitConverter.ToString(_image, 0, 8)} ...  (magic 'ORIX')");
+            Log("Ready. Each click decrypts and runs this image on the VM.\n");
+        }
+        catch (System.Exception e)
+        {
+            Log("Failed to build image: " + e.Message);
+        }
+    }
+
+    private void Run()
+    {
+        _clicks++;
+        try
+        {
+            var hosts = HostRegistry.CreateStandard(s => Log("    " + s));
+            hosts.Register("get_clicks", _ => Value.Number(_clicks));
+            hosts.Register("ui_set_text", args =>
+            {
+                OutputText = args.Length > 0 ? args[0].Display() : "";
+                return Value.Nil;
+            });
+
+            Log($"--- Run #{_clicks}: VM decrypts program.orx, then executes ---");
+            VirtualMachine.RunImage(_image, hosts);
+        }
+        catch (System.Exception ex)
+        {
+            OutputText = "Runtime error";
+            Log("Error: " + ex.Message);
+        }
+    }
+
+    private void Log(string line) => LogText += line + "\n";
+
+    // The Ori program executed on every click.
+    private const string Source = @"
+fold fib(n) {
+    when n < 2 { give n }
+    give fib(n - 1) + fib(n - 2)
+}
+fold greet(n) {
+    when n == 1 { give ""First click!"" }
+    give ""You clicked "" + str(n) + "" times""
+}
+hold clicks = get_clicks()
+hold msg = greet(clicks) + ""   |   fib("" + str(clicks) + "") = "" + str(fib(clicks))
+ui_set_text(msg)
+say(""[Ori VM] "" + msg)
+";
+}
