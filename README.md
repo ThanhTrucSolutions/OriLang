@@ -32,6 +32,30 @@ Ori has its own keyword flavour (a nod to *ori-gami* — "folding" logic into sh
 
 ---
 
+## ⚡ Native toolchain (C core + Ori-written compiler + `ori` CLI)
+
+Ori also has a **native** path: the VM core is rewritten in **C**
+([core/orivm.c](core/orivm.c)), the compiler is written **in Ori**
+([tooling/oric.ori](tooling/oric.ori)) and runs on that C VM, and a Flutter-style
+**`ori`** CLI ties it together. A project is just an `ori/` folder and a `meta`
+file:
+
+```powershell
+ori create myapp     # scaffolds  myapp/ori/main.ori  +  myapp/meta
+ori run   myapp      # auto-builds the C VM, compiles with the Ori compiler, runs
+ori build myapp      # -> myapp/build/app.orb
+ori doctor           # install/build everything the toolchain needs
+```
+
+`ori run` builds the native VM on first use (auto-install), then compiles
+`ori/main.ori` to bytecode **using the Ori-written compiler running on the C VM**,
+and runs the result. Full details: **[docs/TOOLCHAIN.md](docs/TOOLCHAIN.md)**.
+
+The original **.NET** implementation (`src/OriLang`, `oric`) remains as the
+bootstrap compiler and powers the Windows / Android / Web demos below.
+
+---
+
 ## 1. Requirements & build
 
 Requires **.NET SDK 9+**.
@@ -476,10 +500,15 @@ The decryption, the bytecode, and the Ori VM all run in WASM; the encrypted
 
 ## 10. Project layout
 
-| Folder | Role |
+| Folder / file | Role |
 |---|---|
-| `src/OriLang` | Core: lexer, parser, compiler, VM, encrypted container |
-| `src/oric`    | The `oric` CLI |
+| `core/`       | **Native VM core in C** (`orivm.c`, ChaCha20/SHA-256), runs `.orx`/`.orb` |
+| `tooling/oric.ori` | **The Ori compiler, written in Ori** (emits `.orb`) |
+| `ori.ps1` / `ori.cmd` | **Flutter-style `ori` CLI** (create/run/build/doctor) |
+| `app/`        | Sample project — just `ori/` + `meta` |
+| `docs/TOOLCHAIN.md` | Native architecture & toolchain guide |
+| `src/OriLang` | .NET core: lexer, parser, compiler, VM, encrypted container |
+| `src/oric`    | The .NET `oric` CLI (bootstrap compiler) |
 | `src/OriDemo` | Windows (WinForms) app with one button |
 | `src/OriDroid` | Android (.NET for Android) app with one button |
 | `src/OriWeb`  | Web (Blazor WebAssembly) app with one button |

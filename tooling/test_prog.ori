@@ -1,0 +1,12 @@
+// A small Ori program, compiled by oric.ori (the Ori-written compiler).
+fold fib(n) {
+    when n < 2 { give n }
+    give fib(n - 1) + fib(n - 2)
+}
+
+hold i = 0
+loop i < 10 {
+    say("fib(" + str(i) + ") = " + str(fib(i)))
+    i = i + 1
+}
+say("compiled by Ori, run on the C VM")

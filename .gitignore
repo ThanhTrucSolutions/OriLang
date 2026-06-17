@@ -14,3 +14,12 @@ android_*.png
 # Android packages (built under bin/, but ignore strays too)
 *.apk
 *.aab
+
+# Native build artifacts + compiled images
+*.exe
+*.obj
+*.orb
+build/
+
+# ...but DO keep the shipped bootstrap compiler image
+!tooling/oric.orx

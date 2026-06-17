@@ -1,0 +1,606 @@
+// ============================================================================
+//  oric.ori — the Ori compiler, written in Ori.
+//
+//  Reads an .ori source file, compiles a subset of Ori to plain bytecode, and
+//  writes a .orb image that the C core VM (core/orivm.c) runs directly.
+//  This is "Ori compiles Ori": the compiler itself runs on the C VM.
+//
+//  Usage (run on the C VM):  orivm oric.orb  <source.ori>  <out.orb>
+//
+//  Supported subset: hold, fold/give (recursion), when/else/else-when, loop,
+//  arithmetic (+ - * / %), comparisons, unary - / !, calls, strings, integers.
+// ============================================================================
+
+// ---- token kinds ----
+hold TK_NUM = 0
+hold TK_STR = 1
+hold TK_IDENT = 2
+hold TK_SYM = 3
+hold TK_EOF = 4
+
+// ---- AST node tags ----
+hold N_NUM = 0
+hold N_STR = 1
+hold N_VAR = 2
+hold N_BIN = 3
+hold N_UNARY = 4
+hold N_ASSIGN = 5
+hold N_CALL = 6
+hold N_HOLD = 7
+hold N_WHEN = 8
+hold N_LOOP = 9
+hold N_GIVE = 10
+hold N_EXPR = 11
+hold N_FOLD = 12
+
+// ---- VM opcodes (must match core/orivm.c) ----
+hold OP_PUSHCONST = 1
+hold OP_PUSHNIL = 2
+hold OP_PUSHTRUE = 3
+hold OP_PUSHFALSE = 4
+hold OP_POP = 5
+hold OP_LOADGLOBAL = 6
+hold OP_STOREGLOBAL = 7
+hold OP_LOADLOCAL = 8
+hold OP_STORELOCAL = 9
+hold OP_NEG = 15
+hold OP_NOT = 22
+hold OP_JMP = 23
+hold OP_JMPIFFALSE = 24
+hold OP_CALL = 26
+hold OP_RET = 27
+hold OP_PUSHINT = 31
+
+// ---- parser/codegen state ----
+hold P_toks = []
+hold P_pos = 0
+hold C_strs = []         // constant pool (strings only)
+hold F_names = []
+hold F_arity = []
+hold F_local = []
+hold F_code = []         // array of code arrays; each instr is [op, arg]
+hold CUR_CODE = []
+hold CUR_LNAMES = []
+hold CUR_LSLOTS = []
+hold CUR_NEXTSLOT = 0
+hold CUR_ISMAIN = no
+
+// ---------------------------------------------------------------------------
+//  Character helpers + tokenizer  (same proven logic as the interpreter)
+// ---------------------------------------------------------------------------
+fold is_digit(c) {
+    hold k = ord(c)
+    give k >= 48 && k <= 57
+}
+fold is_alpha(c) {
+    hold k = ord(c)
+    give (k >= 65 && k <= 90) || (k >= 97 && k <= 122) || c == "_"
+}
+fold is_ident(c) {
+    give is_alpha(c) || is_digit(c)
+}
+fold is_space(c) {
+    give c == " " || c == chr(9) || c == chr(10) || c == chr(13)
+}
+
+fold tokenize(src) {
+    hold toks = []
+    hold n = len(src)
+    hold i = 0
+    loop i < n {
+        hold c = char_at(src, i)
+        when is_space(c) {
+            i = i + 1
+        } else when c == "/" && char_at(src, i + 1) == "/" {
+            loop i < n && char_at(src, i) != chr(10) {
+                i = i + 1
+            }
+        } else when is_digit(c) {
+            hold s0 = i
+            loop i < n && is_digit(char_at(src, i)) {
+                i = i + 1
+            }
+            hold numtext = substr(src, s0, i - s0)
+            push(toks, [TK_NUM, numtext, num(numtext)])
+        } else when is_alpha(c) {
+            hold s1 = i
+            loop i < n && is_ident(char_at(src, i)) {
+                i = i + 1
+            }
+            push(toks, [TK_IDENT, substr(src, s1, i - s1), 0])
+        } else when c == "\"" {
+            i = i + 1
+            hold s2 = i
+            loop i < n && char_at(src, i) != "\"" {
+                i = i + 1
+            }
+            hold strtext = substr(src, s2, i - s2)
+            i = i + 1
+            push(toks, [TK_STR, strtext, 0])
+        } else {
+            hold two = substr(src, i, 2)
+            when two == "==" || two == "!=" || two == "<=" || two == ">=" {
+                push(toks, [TK_SYM, two, 0])
+                i = i + 2
+            } else {
+                push(toks, [TK_SYM, c, 0])
+                i = i + 1
+            }
+        }
+    }
+    push(toks, [TK_EOF, "", 0])
+    give toks
+}
+
+// ---------------------------------------------------------------------------
+//  Parser
+// ---------------------------------------------------------------------------
+fold p_kind() { give P_toks[P_pos][0] }
+fold p_text() { give P_toks[P_pos][1] }
+fold p_num() { give P_toks[P_pos][2] }
+fold p_advance() {
+    hold t = P_toks[P_pos]
+    P_pos = P_pos + 1
+    give t
+}
+fold p_check_sym(s) {
+    give p_kind() == TK_SYM && p_text() == s
+}
+fold p_eat_sym(s) {
+    when p_check_sym(s) { give p_advance() }
+    say("parse error: expected '" + s + "' but found '" + p_text() + "'")
+    give p_advance()
+}
+
+fold parse(src) {
+    P_toks = tokenize(src)
+    P_pos = 0
+    give parse_program()
+}
+fold parse_program() {
+    hold stmts = []
+    loop p_kind() != TK_EOF {
+        push(stmts, parse_stmt())
+    }
+    give stmts
+}
+fold parse_block() {
+    p_eat_sym("{")
+    hold stmts = []
+    loop !p_check_sym("}") && p_kind() != TK_EOF {
+        push(stmts, parse_stmt())
+    }
+    p_eat_sym("}")
+    give stmts
+}
+fold parse_stmt() {
+    when p_kind() == TK_IDENT {
+        hold kw = p_text()
+        when kw == "hold" { give parse_hold() }
+        when kw == "fold" { give parse_fold() }
+        when kw == "when" { give parse_when() }
+        when kw == "loop" { give parse_loop() }
+        when kw == "give" { give parse_give() }
+    }
+    give [N_EXPR, parse_expr()]
+}
+fold parse_hold() {
+    p_advance()
+    hold name = p_advance()[1]
+    p_eat_sym("=")
+    give [N_HOLD, name, parse_expr()]
+}
+fold parse_fold() {
+    p_advance()
+    hold name = p_advance()[1]
+    p_eat_sym("(")
+    hold params = []
+    when !p_check_sym(")") {
+        push(params, p_advance()[1])
+        loop p_check_sym(",") {
+            p_advance()
+            push(params, p_advance()[1])
+        }
+    }
+    p_eat_sym(")")
+    give [N_FOLD, name, params, parse_block()]
+}
+fold parse_when() {
+    p_advance()
+    hold cond = parse_expr()
+    hold thenb = parse_block()
+    hold elseb = none
+    when p_kind() == TK_IDENT && p_text() == "else" {
+        p_advance()
+        when p_kind() == TK_IDENT && p_text() == "when" {
+            elseb = [parse_when()]
+        } else {
+            elseb = parse_block()
+        }
+    }
+    give [N_WHEN, cond, thenb, elseb]
+}
+fold parse_loop() {
+    p_advance()
+    hold cond = parse_expr()
+    give [N_LOOP, cond, parse_block()]
+}
+fold parse_give() {
+    p_advance()
+    hold val = none
+    when p_kind() != TK_EOF && !p_check_sym("}") {
+        val = parse_expr()
+    }
+    give [N_GIVE, val]
+}
+fold parse_expr() { give parse_assign() }
+fold parse_assign() {
+    hold left = parse_equality()
+    when p_check_sym("=") {
+        p_advance()
+        give [N_ASSIGN, left[1], parse_assign()]
+    }
+    give left
+}
+fold parse_equality() {
+    hold e = parse_comparison()
+    loop p_check_sym("==") || p_check_sym("!=") {
+        hold op = p_advance()[1]
+        e = [N_BIN, op, e, parse_comparison()]
+    }
+    give e
+}
+fold parse_comparison() {
+    hold e = parse_term()
+    loop p_check_sym("<") || p_check_sym(">") || p_check_sym("<=") || p_check_sym(">=") {
+        hold op = p_advance()[1]
+        e = [N_BIN, op, e, parse_term()]
+    }
+    give e
+}
+fold parse_term() {
+    hold e = parse_factor()
+    loop p_check_sym("+") || p_check_sym("-") {
+        hold op = p_advance()[1]
+        e = [N_BIN, op, e, parse_factor()]
+    }
+    give e
+}
+fold parse_factor() {
+    hold e = parse_unary()
+    loop p_check_sym("*") || p_check_sym("/") || p_check_sym("%") {
+        hold op = p_advance()[1]
+        e = [N_BIN, op, e, parse_unary()]
+    }
+    give e
+}
+fold parse_unary() {
+    when p_check_sym("-") || p_check_sym("!") {
+        hold op = p_advance()[1]
+        give [N_UNARY, op, parse_unary()]
+    }
+    give parse_call()
+}
+fold parse_call() {
+    hold e = parse_primary()
+    loop p_check_sym("(") {
+        p_advance()
+        hold args = []
+        when !p_check_sym(")") {
+            push(args, parse_expr())
+            loop p_check_sym(",") {
+                p_advance()
+                push(args, parse_expr())
+            }
+        }
+        p_eat_sym(")")
+        e = [N_CALL, e[1], args]
+    }
+    give e
+}
+fold parse_primary() {
+    when p_kind() == TK_NUM {
+        hold v = p_num()
+        p_advance()
+        give [N_NUM, v]
+    }
+    when p_kind() == TK_STR {
+        hold s = p_text()
+        p_advance()
+        give [N_STR, s]
+    }
+    when p_kind() == TK_IDENT {
+        hold nm = p_text()
+        p_advance()
+        give [N_VAR, nm]
+    }
+    when p_check_sym("(") {
+        p_advance()
+        hold inner = parse_expr()
+        p_eat_sym(")")
+        give inner
+    }
+    say("parse error: unexpected token '" + p_text() + "'")
+    p_advance()
+    give [N_NUM, 0]
+}
+
+// ---------------------------------------------------------------------------
+//  Code generation
+// ---------------------------------------------------------------------------
+fold const_str(s) {
+    hold i = 0
+    loop i < len(C_strs) {
+        when C_strs[i] == s { give i }
+        i = i + 1
+    }
+    push(C_strs, s)
+    give len(C_strs) - 1
+}
+
+fold begin_func(isMain) {
+    CUR_CODE = []
+    CUR_LNAMES = []
+    CUR_LSLOTS = []
+    CUR_NEXTSLOT = 0
+    CUR_ISMAIN = isMain
+}
+fold emit(op, arg) {
+    push(CUR_CODE, [op, arg])
+    give len(CUR_CODE) - 1
+}
+fold here() { give len(CUR_CODE) }
+fold patch(at, target) { CUR_CODE[at][1] = target }
+
+fold declare_local(name) {
+    hold slot = CUR_NEXTSLOT
+    push(CUR_LNAMES, name)
+    push(CUR_LSLOTS, slot)
+    CUR_NEXTSLOT = CUR_NEXTSLOT + 1
+    give slot
+}
+fold resolve_local(name) {
+    hold i = 0
+    loop i < len(CUR_LNAMES) {
+        when CUR_LNAMES[i] == name { give CUR_LSLOTS[i] }
+        i = i + 1
+    }
+    give 0 - 1
+}
+
+fold binop(op) {
+    when op == "+" { give 10 }
+    when op == "-" { give 11 }
+    when op == "*" { give 12 }
+    when op == "/" { give 13 }
+    when op == "%" { give 14 }
+    when op == "==" { give 16 }
+    when op == "!=" { give 17 }
+    when op == "<" { give 18 }
+    when op == ">" { give 19 }
+    when op == "<=" { give 20 }
+    when op == ">=" { give 21 }
+    say("bad operator " + op)
+    give 0
+}
+
+fold compile_expr(node) {
+    hold nt = node[0]
+    when nt == N_NUM {
+        emit(OP_PUSHINT, floor(node[1]))
+    } else when nt == N_STR {
+        emit(OP_PUSHCONST, const_str(node[1]))
+    } else when nt == N_VAR {
+        hold slot = resolve_local(node[1])
+        when slot >= 0 {
+            emit(OP_LOADLOCAL, slot)
+        } else {
+            emit(OP_LOADGLOBAL, const_str(node[1]))
+        }
+    } else when nt == N_ASSIGN {
+        compile_expr(node[2])
+        hold name = node[1]
+        hold slot = resolve_local(name)
+        when slot >= 0 {
+            emit(OP_STORELOCAL, slot)
+            emit(OP_LOADLOCAL, slot)
+        } else {
+            hold ci = const_str(name)
+            emit(OP_STOREGLOBAL, ci)
+            emit(OP_LOADGLOBAL, ci)
+        }
+    } else when nt == N_UNARY {
+        compile_expr(node[2])
+        when node[1] == "-" {
+            emit(OP_NEG, 0)
+        } else {
+            emit(OP_NOT, 0)
+        }
+    } else when nt == N_BIN {
+        compile_expr(node[2])
+        compile_expr(node[3])
+        emit(binop(node[1]), 0)
+    } else when nt == N_CALL {
+        hold name = node[1]
+        hold slot = resolve_local(name)
+        when slot >= 0 {
+            emit(OP_LOADLOCAL, slot)
+        } else {
+            emit(OP_LOADGLOBAL, const_str(name))
+        }
+        hold args = node[2]
+        hold k = 0
+        loop k < len(args) {
+            compile_expr(args[k])
+            k = k + 1
+        }
+        emit(OP_CALL, len(args))
+    }
+}
+
+fold compile_block(stmts) {
+    hold k = 0
+    loop k < len(stmts) {
+        compile_stmt(stmts[k])
+        k = k + 1
+    }
+}
+
+fold compile_stmt(node) {
+    hold nt = node[0]
+    when nt == N_HOLD {
+        compile_expr(node[2])
+        when CUR_ISMAIN {
+            emit(OP_STOREGLOBAL, const_str(node[1]))
+        } else {
+            hold slot = declare_local(node[1])
+            emit(OP_STORELOCAL, slot)
+        }
+    } else when nt == N_EXPR {
+        compile_expr(node[1])
+        emit(OP_POP, 0)
+    } else when nt == N_GIVE {
+        when node[1] != none {
+            compile_expr(node[1])
+        } else {
+            emit(OP_PUSHNIL, 0)
+        }
+        emit(OP_RET, 0)
+    } else when nt == N_WHEN {
+        compile_expr(node[1])
+        hold jFalse = emit(OP_JMPIFFALSE, 0)
+        compile_block(node[2])
+        when node[3] != none {
+            hold jEnd = emit(OP_JMP, 0)
+            patch(jFalse, here())
+            compile_block(node[3])
+            patch(jEnd, here())
+        } else {
+            patch(jFalse, here())
+        }
+    } else when nt == N_LOOP {
+        hold start = here()
+        compile_expr(node[1])
+        hold jExit = emit(OP_JMPIFFALSE, 0)
+        compile_block(node[2])
+        emit(OP_JMP, start)
+        patch(jExit, here())
+    }
+}
+
+fold compile_program(prog) {
+    hold mains = []
+    // function 0 is __main__; user folds follow.
+    push(F_names, "__main__")
+    push(F_arity, 0)
+    push(F_local, 0)
+    push(F_code, [])
+    hold i = 0
+    loop i < len(prog) {
+        hold st = prog[i]
+        when st[0] == N_FOLD {
+            push(F_names, st[1])
+            push(F_arity, len(st[2]))
+            push(F_local, 0)
+            push(F_code, [])
+        } else {
+            push(mains, st)
+        }
+        i = i + 1
+    }
+    // compile __main__
+    begin_func(yes)
+    compile_block(mains)
+    emit(OP_PUSHNIL, 0)
+    emit(OP_RET, 0)
+    F_code[0] = CUR_CODE
+    F_local[0] = CUR_NEXTSLOT
+    // compile each fold
+    hold fi = 1
+    i = 0
+    loop i < len(prog) {
+        hold st2 = prog[i]
+        when st2[0] == N_FOLD {
+            begin_func(no)
+            hold ps = st2[2]
+            hold k = 0
+            loop k < len(ps) {
+                declare_local(ps[k])
+                k = k + 1
+            }
+            compile_block(st2[3])
+            emit(OP_PUSHNIL, 0)
+            emit(OP_RET, 0)
+            F_code[fi] = CUR_CODE
+            F_local[fi] = CUR_NEXTSLOT
+            fi = fi + 1
+        }
+        i = i + 1
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Serialize to a .orb byte buffer
+// ---------------------------------------------------------------------------
+fold emit_u8(buf, b) { push(buf, b % 256) }
+fold emit_i32(buf, v) {
+    emit_u8(buf, v % 256)
+    emit_u8(buf, floor(v / 256) % 256)
+    emit_u8(buf, floor(v / 65536) % 256)
+    emit_u8(buf, floor(v / 16777216) % 256)
+}
+fold emit_str(buf, s) {
+    emit_i32(buf, len(s))
+    hold i = 0
+    loop i < len(s) {
+        emit_u8(buf, ord(char_at(s, i)))
+        i = i + 1
+    }
+}
+fold emit_ascii(buf, s) {
+    hold i = 0
+    loop i < len(s) {
+        emit_u8(buf, ord(char_at(s, i)))
+        i = i + 1
+    }
+}
+
+fold serialize() {
+    hold buf = []
+    emit_ascii(buf, "ORB1")
+    emit_i32(buf, len(C_strs))
+    hold i = 0
+    loop i < len(C_strs) {
+        emit_u8(buf, 3)
+        emit_str(buf, C_strs[i])
+        i = i + 1
+    }
+    emit_i32(buf, 0)
+    emit_i32(buf, len(F_names))
+    i = 0
+    loop i < len(F_names) {
+        emit_str(buf, F_names[i])
+        emit_i32(buf, F_arity[i])
+        emit_i32(buf, F_local[i])
+        hold code = F_code[i]
+        emit_i32(buf, len(code))
+        hold j = 0
+        loop j < len(code) {
+            emit_u8(buf, code[j][0])
+            emit_i32(buf, code[j][1])
+            j = j + 1
+        }
+        i = i + 1
+    }
+    give buf
+}
+
+// ---------------------------------------------------------------------------
+//  Main
+// ---------------------------------------------------------------------------
+hold src = read_file(argv(0))
+hold prog = parse(src)
+compile_program(prog)
+hold bytes = serialize()
+write_bytes(argv(1), bytes)
+say("oric.ori: compiled " + argv(0) + " -> " + argv(1) + " (" + str(len(bytes)) + " bytes .orb, " + str(len(F_names)) + " functions)")
