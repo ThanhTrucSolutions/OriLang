@@ -164,8 +164,24 @@ static int run_window(const char* proj, Meta* m){
     return run_wait(gui, argv);
 }
 
+static int run_android(const char* proj, Meta* m){
+    if(build_android(proj, m)) return 1;
+    char apk[MAX_PATH]; snprintf(apk, MAX_PATH, "%s\\build\\%s.apk", proj, m->name);
+    char* lad = getenv("LOCALAPPDATA");
+    char adb[MAX_PATH]; snprintf(adb, MAX_PATH, "%s\\Android\\Sdk\\platform-tools\\adb.exe", lad?lad:"");
+    if(!exists(adb)){ fprintf(stderr,"ori: adb not found. Install manually: adb install -r \"%s\"\n", apk); return 0; }
+    printf("ori: installing + launching on the connected device/emulator...\n");
+    const char* ins[] = { adb, "install", "-r", apk, NULL }; run_wait(adb, ins);
+    const char* run[] = { adb, "shell", "am", "start", "-n", "ori.app/.MainActivity", NULL };
+    int rc = run_wait(adb, run);
+    if(rc==0) printf("ori: launched ori.app on the device.\n");
+    else fprintf(stderr,"ori: no device/emulator? start one, then: adb install -r \"%s\"\n", apk);
+    return 0;
+}
+
 static int cmd_run(const char* proj, Meta* m, int hot){
     if(!strcmp(m->platform,"web")) return run_web(proj, m);
+    if(!strcmp(m->platform,"android")) return run_android(proj, m);
     if(!strcmp(m->platform,"windows") && !strcmp(m->ui,"window")) return run_window(proj, m);
     char entry[MAX_PATH]; snprintf(entry,MAX_PATH,"%s\\%s",proj,m->entry); to_backslash(entry);
     if(!hot){

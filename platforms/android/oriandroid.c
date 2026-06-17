@@ -33,3 +33,15 @@ Java_ori_app_OriBridge_call(JNIEnv* env, jclass cls, jstring fn, jstring arg){
     (*env)->ReleaseStringUTFChars(env, arg, a);
     return (*env)->NewStringUTF(env, r ? r : "");
 }
+
+JNIEXPORT jstring JNICALL
+Java_ori_app_OriBridge_call2(JNIEnv* env, jclass cls, jstring fn, jstring a1, jstring a2){
+    const char* f = (*env)->GetStringUTFChars(env, fn, NULL);
+    const char* x = (*env)->GetStringUTFChars(env, a1, NULL);
+    const char* y = (*env)->GetStringUTFChars(env, a2, NULL);
+    char* r = ori_call2(f, x, y);
+    (*env)->ReleaseStringUTFChars(env, fn, f);
+    (*env)->ReleaseStringUTFChars(env, a1, x);
+    (*env)->ReleaseStringUTFChars(env, a2, y);
+    return (*env)->NewStringUTF(env, r ? r : "");
+}

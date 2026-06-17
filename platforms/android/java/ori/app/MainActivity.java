@@ -2,6 +2,8 @@ package ori.app;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -14,118 +16,112 @@ import android.graphics.Paint;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
-// A GUI Todo app. The list logic is the Ori model (mobile/ori/main.ori) running
-// on the native C VM (libori.so) via JNI; this Activity is just the view.
+// GENERIC host: it renders whatever the Ori program describes via render() and
+// forwards events to dispatch(event, arg). It contains NO app logic — the todo
+// behaviour lives entirely in ori/main.ori. Widget protocol:
+//   text|CONTENT
+//   edit|PLACEHOLDER
+//   btn|EVENT|ARG|CAPTION          (ARG "@edit" -> current text-field contents)
+//   item|TAP_EVENT|DEL_EVENT|ARG|CAPTION
 public class MainActivity extends Activity {
-    private LinearLayout listContainer;
-    private EditText input;
+    private LinearLayout content;
+    private String editText = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(40, 48, 40, 40);
-        root.setBackgroundColor(Color.rgb(15, 17, 22));
-
-        TextView title = new TextView(this);
-        title.setText("Ori Todo");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(24);
-
-        TextView sub = new TextView(this);
-        sub.setText("logic runs on the Ori VM (native C, via JNI)");
-        sub.setTextColor(Color.rgb(154, 160, 170));
-        sub.setTextSize(12);
-        sub.setPadding(0, 2, 0, 18);
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        input = new EditText(this);
-        input.setHint("What needs doing?");
-        input.setTextColor(Color.WHITE);
-        input.setHintTextColor(Color.rgb(110, 116, 128));
-        input.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        Button add = new Button(this);
-        add.setText("Add");
-        row.addView(input);
-        row.addView(add);
-
-        listContainer = new LinearLayout(this);
-        listContainer.setOrientation(LinearLayout.VERTICAL);
-        listContainer.setPadding(0, 18, 0, 0);
+        content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(40, 44, 40, 40);
+        content.setBackgroundColor(Color.rgb(15, 17, 22));
         ScrollView sc = new ScrollView(this);
-        sc.addView(listContainer);
+        sc.setBackgroundColor(Color.rgb(15, 17, 22));
+        sc.addView(content);
+        setContentView(sc);
 
-        root.addView(title);
-        root.addView(sub);
-        root.addView(row);
-        root.addView(sc);
-        setContentView(root);
-
-        try { OriBridge.runImage(readAsset("app.orb")); }   // boot the model + seed
+        try { OriBridge.runImage(readAsset("app.orb")); }   // boot the Ori program
         catch (Exception e) { }
-
-        add.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { doAdd(); }
-        });
-        render();
+        build(OriBridge.call("render", ""));
     }
 
-    private void doAdd() {
-        String t = input.getText().toString().trim();
-        if (t.length() == 0) return;
-        OriBridge.call("add", t);
-        input.setText("");
-        render();
+    private void dispatch(String ev, String arg) {
+        build(OriBridge.call2("dispatch", ev, arg));
     }
 
-    private void render() {
-        listContainer.removeAllViews();
-        String view = OriBridge.call("view", "");
-        String[] lines = view.split("\n");
-        int shown = 0;
+    private void build(String spec) {
+        content.removeAllViews();
+        String[] lines = spec.split("\n");
         for (String line : lines) {
             if (line.length() == 0) continue;
-            String[] p = line.split("\\|");
-            if (p.length < 3) continue;
-            shown++;
-            final String idx = p[0];
-            boolean done = p[1].equals("1");
-            StringBuilder tb = new StringBuilder();
-            for (int k = 2; k < p.length; k++) { if (k > 2) tb.append("|"); tb.append(p[k]); }
-            final String text = tb.toString();
+            int bar = line.indexOf('|');
+            String type = bar < 0 ? line : line.substring(0, bar);
 
-            LinearLayout r = new LinearLayout(this);
-            r.setOrientation(LinearLayout.HORIZONTAL);
-            r.setPadding(0, 16, 0, 16);
+            if (type.equals("text")) {
+                String[] p = line.split("\\|", 2);
+                TextView tv = new TextView(this);
+                tv.setText(p.length > 1 ? p[1] : "");
+                tv.setTextColor(Color.rgb(230, 233, 240));
+                tv.setTextSize(20);
+                tv.setPadding(0, 6, 0, 6);
+                content.addView(tv);
 
-            TextView tv = new TextView(this);
-            tv.setText((done ? "[x]  " : "[ ]  ") + text);
-            tv.setTextColor(done ? Color.rgb(107, 114, 128) : Color.rgb(230, 233, 240));
-            tv.setTextSize(17);
-            if (done) tv.setPaintFlags(tv.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
-            tv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            tv.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) { OriBridge.call("toggle", idx); render(); }
-            });
+            } else if (type.equals("edit")) {
+                String[] p = line.split("\\|", 2);
+                final EditText et = new EditText(this);
+                et.setHint(p.length > 1 ? p[1] : "");
+                et.setText(editText);
+                et.setTextColor(Color.WHITE);
+                et.setHintTextColor(Color.rgb(110, 116, 128));
+                et.addTextChangedListener(new TextWatcher() {
+                    public void afterTextChanged(Editable s) { editText = s.toString(); }
+                    public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+                    public void onTextChanged(CharSequence s, int a, int b, int c) {}
+                });
+                content.addView(et);
 
-            Button del = new Button(this);
-            del.setText("X");
-            del.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) { OriBridge.call("remove", idx); render(); }
-            });
+            } else if (type.equals("btn")) {
+                String[] p = line.split("\\|", 4);
+                final String ev = p.length > 1 ? p[1] : "";
+                final String argSpec = p.length > 2 ? p[2] : "";
+                Button b = new Button(this);
+                b.setText(p.length > 3 ? p[3] : "");
+                b.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) {
+                        String a = argSpec;
+                        if (argSpec.equals("@edit")) { a = editText; editText = ""; }
+                        dispatch(ev, a);
+                    }
+                });
+                content.addView(b);
 
-            r.addView(tv);
-            r.addView(del);
-            listContainer.addView(r);
-        }
-        if (shown == 0) {
-            TextView empty = new TextView(this);
-            empty.setText("No tasks yet - add one above.");
-            empty.setTextColor(Color.rgb(110, 116, 128));
-            listContainer.addView(empty);
+            } else if (type.equals("item")) {
+                String[] p = line.split("\\|", 5);
+                final String tap = p.length > 1 ? p[1] : "";
+                final String del = p.length > 2 ? p[2] : "";
+                final String arg = p.length > 3 ? p[3] : "";
+                String cap = p.length > 4 ? p[4] : "";
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setPadding(0, 16, 0, 16);
+                TextView tv = new TextView(this);
+                tv.setText(cap);
+                tv.setTextSize(17);
+                boolean done = cap.startsWith("[x]");
+                tv.setTextColor(done ? Color.rgb(107, 114, 128) : Color.rgb(230, 233, 240));
+                if (done) tv.setPaintFlags(tv.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
+                tv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                tv.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) { dispatch(tap, arg); }
+                });
+                Button x = new Button(this);
+                x.setText("X");
+                x.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) { dispatch(del, arg); }
+                });
+                row.addView(tv);
+                row.addView(x);
+                content.addView(row);
+            }
         }
     }
 

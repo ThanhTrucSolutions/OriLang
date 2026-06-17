@@ -1,47 +1,53 @@
-// todo/ori/main.ori — the Todo app's logic (the "model"), written in Ori.
-// The web UI (todo/web/index.html) calls these functions on each event and
-// renders whatever `view` returns. No parentheses for calls (paren-free Ori).
+// Todo app — UI *and* logic, both written in Ori.
+// A generic native host (web / Windows / Android) calls render() to draw the
+// screen and dispatch(event, arg) on each user action. The host knows nothing
+// about "todo" — it only understands these widget lines:
+//   text|CONTENT
+//   edit|PLACEHOLDER
+//   btn|EVENT|ARG|CAPTION        (ARG "@edit" = current text-field contents)
+//   item|TAP_EVENT|DEL_EVENT|ARG|CAPTION
 
 hold todos = []      // each item is [doneFlag, text]
 
-// Serialize the list as lines "index|done|text" for the UI to render.
-fold view s {
-    hold out = ""
+fold render {
+    hold s = ""
+    s = s + "text|Ori Todo" + chr 10
+    s = s + "text|UI and logic written in Ori; drawn by a generic host" + chr 10
+    s = s + "edit|What needs doing?" + chr 10
+    s = s + "btn|add|@edit|Add" + chr 10
     hold i = 0
     loop i < len todos {
-        hold item = todos[i]
-        out = out + str i + "|" + str (item[0]) + "|" + item[1] + chr 10
+        hold it = todos[i]
+        hold mark = "[ ] "
+        when it[0] == 1 { mark = "[x] " }
+        s = s + "item|toggle|del|" + str i + "|" + mark + it[1] + chr 10
         i = i + 1
     }
-    give out
+    give s
 }
 
-fold add text {
-    push (todos, [0, text])
-    give view ""
-}
-
-fold toggle s {
-    hold idx = num s
-    when idx >= 0 && idx < len todos {
-        hold item = todos[idx]
-        when item[0] == 0 { item[0] = 1 } else { item[0] = 0 }
+fold dispatch ev arg {
+    when ev == "add" {
+        when len arg > 0 { push (todos, [0, arg]) }
+    } else when ev == "toggle" {
+        hold idx = num arg
+        when idx >= 0 && idx < len todos {
+            hold it = todos[idx]
+            when it[0] == 0 { it[0] = 1 } else { it[0] = 0 }
+        }
+    } else when ev == "del" {
+        hold idx = num arg
+        hold kept = []
+        hold i = 0
+        loop i < len todos {
+            when i != idx { push (kept, todos[i]) }
+            i = i + 1
+        }
+        todos = kept
     }
-    give view ""
+    give render()
 }
 
-fold remove s {
-    hold idx = num s
-    hold kept = []
-    hold i = 0
-    loop i < len todos {
-        when i != idx { push (kept, todos[i]) }
-        i = i + 1
-    }
-    todos = kept
-    give view ""
-}
-
-// Seed a couple of items so the list isn't empty on first load.
-add "Learn the Ori language"
-add "Build a todo app with Ori"
+// seed
+push (todos, [0, "Learn the Ori language"])
+push (todos, [0, "Run this todo app everywhere"])
