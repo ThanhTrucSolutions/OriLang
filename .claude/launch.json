@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "oriweb",
-      "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "-c", "Release", "--project", "src/OriWeb/OriWeb.csproj", "--urls", "http://127.0.0.1:5099"],
-      "port": 5099
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "ori.ps1", "run", "app-web"],
+      "port": 5151
     }
   ]
 }

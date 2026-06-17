@@ -1,0 +1,16 @@
+// app-web — runs in the browser on the Ori VM compiled to WebAssembly.
+// Run it with:  ori run app-web   (then open the printed URL)
+// Edit this file and save: the page hot-reloads with the new output.
+
+fold fib(n) {
+    when n < 2 { give n }
+    give fib(n - 1) + fib(n - 2)
+}
+
+say("== Ori on the Web (WASM) ==")
+hold i = 0
+loop i < 12 {
+    say("fib(" + str(i) + ") = " + str(fib(i)))
+    i = i + 1
+}
+say("Same C VM as desktop, compiled to WebAssembly.")

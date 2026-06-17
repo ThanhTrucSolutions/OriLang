@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ori on the Web</title>
+<style>
+  body { background:#181a20; color:#e6e9f0; font-family:'Segoe UI',sans-serif; padding:24px; }
+  h2 { margin:0 0 4px; }
+  #status { color:#9aa0aa; font-size:13px; margin-bottom:14px; }
+  pre { background:#0f1116; padding:14px; border-radius:8px; white-space:pre-wrap;
+        min-height:220px; font-size:13px; line-height:1.45; color:#c8cdd7; }
+</style>
+</head>
+<body>
+  <h2>Ori VM on the Web</h2>
+  <div id="status">loading the Ori VM (WebAssembly)…</div>
+  <pre id="out"></pre>
+
+  <script src="orivm.js"></script>
+  <script>
+    const out = document.getElementById('out');
+    const status = document.getElementById('status');
+    let lastHash = "";
+
+    async function runOnce() {
+      let buf;
+      try {
+        const res = await fetch('app.orb?' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        buf = new Uint8Array(await res.arrayBuffer());
+      } catch (e) { return; }
+
+      let h = buf.length >>> 0;
+      for (let i = 0; i < buf.length; i++) h = (h * 31 + buf[i]) >>> 0;
+      const hash = buf.length + ":" + h;
+      if (hash === lastHash) return;          // unchanged -> no rerun
+      lastHash = hash;
+
+      let text = "";
+      const Module = await createOriVM({
+        print: (s) => { text += s + "\n"; },
+        printErr: (s) => { text += s + "\n"; },
+      });
+      try {
+        Module.FS.writeFile('/app.orb', buf);
+        Module.callMain(['/app.orb']);
+      } catch (e) {
+        text += "\n[vm exited] " + e;
+      }
+      out.textContent = text;
+      status.textContent = "ran at " + new Date().toLocaleTimeString() + " — hot reload is on (edit ori/main.ori)";
+    }
+
+    runOnce();
+    setInterval(runOnce, 1000);   // poll for recompiled app.orb -> hot reload
+  </script>
+</body>
+</html>
