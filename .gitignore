@@ -1,0 +1,11 @@
+# Build output
+bin/
+obj/
+*.user
+
+# Compiled Ori images (generated from .ori sources)
+*.orx
+
+# Local screenshots / scratch
+window_after.png
+screenshot_*.png
