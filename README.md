@@ -3,7 +3,8 @@
 **Ori** is a small programming language (designed from scratch) that runs on the
 **Ori VM** — a stack-based bytecode virtual machine written in C#/.NET 9. Source
 files (`.ori`) are compiled into **multi-layer encrypted** `.orx` images that are
-hard to reverse engineer.
+hard to reverse engineer. The exact same VM and `.orx` format run on **Windows,
+Android, and the web (WebAssembly)** — see sections 7–9.
 
 It is also **self-hosting in spirit**: a complete Ori interpreter
 ([examples/ori_in_ori.ori](examples/ori_in_ori.ori)) is written *in Ori* and runs
@@ -440,7 +441,40 @@ encrypted Ori image is decrypted and executed on Android.
 
 ---
 
-## 9. Project layout
+## 9. Running in the browser (OriWeb)
+
+[src/OriWeb](src/OriWeb) is a **Blazor WebAssembly** app: the same `OriLang` core
+is compiled to WebAssembly and runs **entirely in the browser** — no server-side
+execution. One button decrypts an embedded `program.orx` and runs it on the Ori
+VM client-side, computing `fib(clickCount)` and updating the page via the
+`ui_set_text` host function.
+
+Prerequisites (one-time):
+
+```powershell
+dotnet workload install wasm-tools
+```
+
+Run the dev server:
+
+```powershell
+dotnet run --project src/OriWeb/OriWeb.csproj -c Release
+# then open the printed http://localhost:... URL
+```
+
+Publish static files (deployable to any static host — GitHub Pages, Netlify, S3…):
+
+```powershell
+dotnet publish src/OriWeb/OriWeb.csproj -c Release
+# -> src/OriWeb/bin/Release/net9.0/publish/wwwroot
+```
+
+The decryption, the bytecode, and the Ori VM all run in WASM; the encrypted
+`.orx` never needs a server.
+
+---
+
+## 10. Project layout
 
 | Folder | Role |
 |---|---|
@@ -448,11 +482,12 @@ encrypted Ori image is decrypted and executed on Android.
 | `src/oric`    | The `oric` CLI |
 | `src/OriDemo` | Windows (WinForms) app with one button |
 | `src/OriDroid` | Android (.NET for Android) app with one button |
+| `src/OriWeb`  | Web (Blazor WebAssembly) app with one button |
 | `examples`    | `.ori` examples, incl. the self-hosted interpreter |
 
 ---
 
-## 10. Current limitations
+## 11. Current limitations
 
 - Types: number, string, bool, none, function, array (no hash maps/objects yet).
 - No closures / nested functions / block-scoped locals.
