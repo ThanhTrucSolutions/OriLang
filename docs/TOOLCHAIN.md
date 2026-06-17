@@ -10,8 +10,10 @@ Ori is built from two parts and a thin CLI — no .NET, no third runtime:
   and ChaCha20 ([chacha20.h](../core/chacha20.h)).
 - **Compiler in Ori** — [tooling/oric.ori](../tooling/oric.ori). Tokenizer +
   recursive-descent parser + bytecode emitter + `.orb` serializer, written in
-  Ori. It runs on the C VM, so **Ori compiles Ori**.
-- **`ori` CLI** — [ori.ps1](../ori.ps1) (+ `ori.cmd`), Flutter-style.
+  Ori. It runs on the C VM, so **Ori compiles Ori**. The parser is parenthesis-
+  free (juxtaposition application) and also accepts the legacy `f(a,b)` style.
+- **`ori` CLI** — native [tooling/ori.c](../tooling/ori.c) → `ori.exe` (no .NET).
+  Bootstrap both binaries with `build.cmd`.
 
 ## Self-hosting & the bootstrap
 
@@ -38,7 +40,7 @@ No external compiler is required — Ori is its own compiler from here on.
 ```
 myapp/
   ori/main.ori
-  meta
+  myapp.meta        (any *.meta file in the project root)
 ```
 
 ```
@@ -49,16 +51,23 @@ platform: windows        # windows | web | android
 dependencies:
 ```
 
-## `ori` commands
+## `ori` commands (native ori.exe)
 
 ```
-ori create <name> [-Platform windows|web|android]
-ori run   [path] [-Hot]      compile + run; -Hot = hot reload
-ori dev   [path]             hot reload (web: live dev server)
-ori build [path] [-Release]  build/app.orb  (-Release: encrypted build/app.orx)
+ori create <name> [windows|web|android]
+ori run   [path]             compile + run (web: live dev server with hot reload)
+ori dev   [path]             hot reload (watch + recompile + rerun)
+ori build [path] [release]   build/app.orb  (release: encrypted build/app.orx)
 ori doctor                   build the native VM if missing; check the toolchain
 ori version
 ```
+
+## Web GUI bridge
+
+For interactive web apps, the WASM build exports `ori_call_str(fname, arg)`: JS
+calls an Ori global function (the "model") on each UI event and renders the
+returned string. The VM instance persists across calls, so state lives in Ori.
+See [todo/](../todo) for a complete GUI todo app.
 
 `ori run` flow: **doctor** (build `core/orivm.exe` with MSVC if missing) →
 **compile** (`orivm oric.orb  ori/main.ori  build/app.orb`) → **run**

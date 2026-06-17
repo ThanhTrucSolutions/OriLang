@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "oriweb",
-      "runtimeExecutable": "powershell",
-      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "ori.ps1", "run", "app-web"],
+      "name": "oritodo",
+      "runtimeExecutable": "D:\\ThanhTrucSolutions\\Ori\\ori.exe",
+      "runtimeArgs": ["run", "todo"],
       "port": 5151
     }
   ]

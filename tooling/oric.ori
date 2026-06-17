@@ -17,6 +17,7 @@ hold TK_STR = 1
 hold TK_IDENT = 2
 hold TK_SYM = 3
 hold TK_EOF = 4
+hold TK_NL = 5      // newline = statement terminator (with continuation rules)
 
 // ---- AST node tags ----
 hold N_NUM = 0
@@ -74,6 +75,9 @@ hold CUR_LNAMES = []
 hold CUR_LSLOTS = []
 hold CUR_NEXTSLOT = 0
 hold CUR_ISMAIN = no
+hold LAST_KIND = 0 - 1   // tokenizer: kind of last emitted token
+hold LAST_TEXT = ""
+hold DEPTH = 0           // ( and [ nesting depth (newlines suppressed inside)
 
 // ---------------------------------------------------------------------------
 //  Character helpers + tokenizer
@@ -93,13 +97,44 @@ fold is_space(c) {
     give c == " " || c == chr(9) || c == chr(10) || c == chr(13)
 }
 
+fold emit_tok(toks, kind, text, n) {
+    push(toks, [kind, text, n])
+    LAST_KIND = kind
+    LAST_TEXT = text
+    when kind == TK_SYM {
+        when text == "(" || text == "[" { DEPTH = DEPTH + 1 }
+        when text == ")" || text == "]" { DEPTH = DEPTH - 1 }
+    }
+}
+
+// Should a newline be suppressed (treated as a line continuation, not a terminator)?
+fold nl_is_continuation() {
+    when LAST_KIND == TK_NL { give yes }
+    when LAST_KIND == 0 - 1 { give yes }
+    when LAST_KIND == TK_SYM {
+        hold t = LAST_TEXT
+        give t == "+" || t == "-" || t == "*" || t == "/" || t == "%" || t == "==" || t == "!=" || t == "<" || t == ">" || t == "<=" || t == ">=" || t == "&&" || t == "||" || t == "=" || t == "!" || t == "(" || t == "[" || t == "{" || t == ","
+    }
+    give no
+}
+
 fold tokenize(src) {
     hold toks = []
     hold n = len(src)
     hold i = 0
+    LAST_KIND = 0 - 1
+    LAST_TEXT = ""
+    DEPTH = 0
     loop i < n {
         hold c = char_at(src, i)
-        when is_space(c) {
+        when c == chr(10) {
+            hold suppress = DEPTH > 0
+            when !suppress {
+                when nl_is_continuation() { suppress = yes }
+            }
+            when !suppress { emit_tok(toks, TK_NL, "", 0) }
+            i = i + 1
+        } else when is_space(c) {
             i = i + 1
         } else when c == "/" && char_at(src, i + 1) == "/" {
             loop i < n && char_at(src, i) != chr(10) {
@@ -111,13 +146,13 @@ fold tokenize(src) {
                 i = i + 1
             }
             hold numtext = substr(src, s0, i - s0)
-            push(toks, [TK_NUM, numtext, num(numtext)])
+            emit_tok(toks, TK_NUM, numtext, num(numtext))
         } else when is_alpha(c) {
             hold s1 = i
             loop i < n && is_ident(char_at(src, i)) {
                 i = i + 1
             }
-            push(toks, [TK_IDENT, substr(src, s1, i - s1), 0])
+            emit_tok(toks, TK_IDENT, substr(src, s1, i - s1), 0)
         } else when c == "\"" {
             i = i + 1
             hold sval = ""
@@ -137,19 +172,19 @@ fold tokenize(src) {
                 }
             }
             i = i + 1
-            push(toks, [TK_STR, sval, 0])
+            emit_tok(toks, TK_STR, sval, 0)
         } else {
             hold two = substr(src, i, 2)
             when two == "==" || two == "!=" || two == "<=" || two == ">=" || two == "&&" || two == "||" {
-                push(toks, [TK_SYM, two, 0])
+                emit_tok(toks, TK_SYM, two, 0)
                 i = i + 2
             } else {
-                push(toks, [TK_SYM, c, 0])
+                emit_tok(toks, TK_SYM, substr(src, i, 1), 0)
                 i = i + 1
             }
         }
     }
-    push(toks, [TK_EOF, "", 0])
+    emit_tok(toks, TK_EOF, "", 0)
     give toks
 }
 
@@ -172,6 +207,19 @@ fold p_eat_sym(s) {
     say("parse error: expected '" + s + "' but found '" + p_text() + "'")
     give p_advance()
 }
+fold p_skip_nl() {
+    loop p_kind() == TK_NL { p_advance() }
+}
+fold is_kw(t) {
+    give t == "hold" || t == "fold" || t == "when" || t == "loop" || t == "give" || t == "else"
+}
+fold starts_arg() {
+    hold k = p_kind()
+    when k == TK_NUM { give yes }
+    when k == TK_STR { give yes }
+    when k == TK_IDENT { give !is_kw(p_text()) }
+    give no
+}
 
 fold parse(src) {
     P_toks = tokenize(src)
@@ -180,16 +228,20 @@ fold parse(src) {
 }
 fold parse_program() {
     hold stmts = []
+    p_skip_nl()
     loop p_kind() != TK_EOF {
         push(stmts, parse_stmt())
+        p_skip_nl()
     }
     give stmts
 }
 fold parse_block() {
     p_eat_sym("{")
     hold stmts = []
+    p_skip_nl()
     loop !p_check_sym("}") && p_kind() != TK_EOF {
         push(stmts, parse_stmt())
+        p_skip_nl()
     }
     p_eat_sym("}")
     give stmts
@@ -214,16 +266,22 @@ fold parse_hold() {
 fold parse_fold() {
     p_advance()
     hold name = p_advance()[1]
-    p_eat_sym("(")
     hold params = []
-    when !p_check_sym(")") {
-        push(params, p_advance()[1])
-        loop p_check_sym(",") {
-            p_advance()
+    when p_check_sym("(") {
+        p_advance()
+        when !p_check_sym(")") {
+            push(params, p_advance()[1])
+            loop p_check_sym(",") {
+                p_advance()
+                push(params, p_advance()[1])
+            }
+        }
+        p_eat_sym(")")
+    } else {
+        loop p_kind() == TK_IDENT {
             push(params, p_advance()[1])
         }
     }
-    p_eat_sym(")")
     give [N_FOLD, name, params, parse_block()]
 }
 fold parse_when() {
@@ -231,6 +289,8 @@ fold parse_when() {
     hold cond = parse_expr()
     hold thenb = parse_block()
     hold elseb = none
+    hold save = P_pos
+    p_skip_nl()
     when p_kind() == TK_IDENT && p_text() == "else" {
         p_advance()
         when p_kind() == TK_IDENT && p_text() == "when" {
@@ -238,6 +298,8 @@ fold parse_when() {
         } else {
             elseb = parse_block()
         }
+    } else {
+        P_pos = save
     }
     give [N_WHEN, cond, thenb, elseb]
 }
@@ -249,7 +311,7 @@ fold parse_loop() {
 fold parse_give() {
     p_advance()
     hold val = none
-    when p_kind() != TK_EOF && !p_check_sym("}") {
+    when p_kind() != TK_EOF && p_kind() != TK_NL && !p_check_sym("}") {
         val = parse_expr()
     }
     give [N_GIVE, val]
@@ -324,7 +386,7 @@ fold parse_unary() {
 }
 fold parse_postfix() {
     hold e = parse_primary()
-    loop p_check_sym("(") || p_check_sym("[") {
+    loop yes {
         when p_check_sym("(") {
             p_advance()
             hold args = []
@@ -337,14 +399,22 @@ fold parse_postfix() {
             }
             p_eat_sym(")")
             e = [N_CALL, e[1], args]
-        } else {
+        } else when p_check_sym("[") {
             p_advance()
             hold idx = parse_expr()
             p_eat_sym("]")
             e = [N_INDEX, e, idx]
+        } else when starts_arg() {
+            // paren-free application:  f a b   ->   call f with atom args
+            hold args = []
+            loop starts_arg() {
+                push(args, parse_primary())
+            }
+            e = [N_CALL, e[1], args]
+        } else {
+            give e
         }
     }
-    give e
 }
 fold parse_primary() {
     when p_kind() == TK_NUM {

@@ -1,26 +1,23 @@
-// main.ori — an Ori app. Run it with:  ori run app
-//
-// This is compiled by the Ori-written compiler (tooling/oric.ori) and executed
-// by the native C VM (core/orivm.c). The whole project is just this ori/ folder
-// plus a `meta` manifest.
+// main.ori — a native Ori console app (no parentheses for calls).
+// Run with:  ori run app    (or  ori dev app  for hot reload)
 
-fold fib(n) {
+fold fib n {
     when n < 2 { give n }
-    give fib(n - 1) + fib(n - 2)
+    give fib (n - 1) + fib (n - 2)
 }
 
-fold fact(n) {
+fold fact n {
     when n <= 1 { give 1 }
-    give n * fact(n - 1)
+    give n * fact (n - 1)
 }
 
-say("== Ori app ==")
+say "== Ori app =="
 
 hold i = 0
 loop i < 10 {
-    say("fib(" + str(i) + ") = " + str(fib(i)))
+    say ("fib(" + str i + ") = " + str (fib i))
     i = i + 1
 }
 
-say("5! = " + str(fact(5)))
-say("Built by Ori, run on the C VM.")
+say ("5! = " + str (fact 5))
+say "Built by Ori, run on the C VM."
