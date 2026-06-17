@@ -5,6 +5,10 @@
 files (`.ori`) are compiled into **multi-layer encrypted** `.orx` images that are
 hard to reverse engineer.
 
+It is also **self-hosting in spirit**: a complete Ori interpreter
+([examples/ori_in_ori.ori](examples/ori_in_ori.ori)) is written *in Ori* and runs
+on the Ori VM — Ori running Ori. See section 4.
+
 ```
   .ori  (source)  ──►  Compiler  ──►  bytecode  ──►  Container  ──►  .orx (encrypted)
                                                                         │
@@ -64,9 +68,11 @@ Example:
 ```powershell
 $oric = "src\oric\bin\Release\net9.0\oric.exe"
 & $oric run   examples\hello.ori
+& $oric run   examples\arrays.ori
+& $oric run   examples\ori_in_ori.ori     # Ori interpreting Ori
 & $oric build examples\hello.ori -o hello.orx
 & $oric peek  hello.orx
-& $oric run   hello.orx          # identical result to running the source
+& $oric run   hello.orx                    # identical result to running the source
 ```
 
 ---
@@ -76,8 +82,8 @@ $oric = "src\oric\bin\Release\net9.0\oric.exe"
 ### 3.1 Programs & statements
 
 A program is a sequence of statements. Each statement ends with a **newline**
-(no semicolons needed). Top-level statements (outside any function) run in order
-from top to bottom — that is the program's entry point.
+(no semicolons). Two statements may **not** share a line. Top-level statements
+(outside any function) run in order from top to bottom — that is the entry point.
 
 ```ori
 say("line 1")
@@ -102,6 +108,7 @@ say("line 2")
 | bool | `yes`, `no` | |
 | none | `none` | the empty value |
 | function | `fold f(...) {...}` | functions are first-class values |
+| array | `[1, "two", yes]` | dynamic, heterogeneous, reference type |
 
 ### 3.4 Variables — `hold`
 
@@ -169,7 +176,31 @@ loop i <= 5 {
 }
 ```
 
-### 3.8 Operators & precedence
+### 3.8 Arrays & indexing
+
+Arrays are dynamic, heterogeneous, and passed by reference:
+
+```ori
+hold xs = [10, 20, 30]
+say(xs[1])            // 20  (zero-based)
+xs[1] = 99            // index assignment
+push(xs, 40)          // append; returns the new length
+say(pop(xs))          // 40  (removes & returns the last element)
+say(len(xs))          // 3
+
+hold total = 0
+hold i = 0
+loop i < len(xs) {
+    total = total + xs[i]
+    i = i + 1
+}
+```
+
+Strings can also be indexed (returns a one-character string) and inspected
+character by character with `char_at`, `ord`, `chr`, `substr` — enough to write a
+tokenizer (see section 4). Full demo: [examples/arrays.ori](examples/arrays.ori).
+
+### 3.9 Operators & precedence
 
 From lowest to highest:
 
@@ -183,7 +214,7 @@ From lowest to highest:
 | 6 | `+`  `-` | left |
 | 7 | `*`  `/`  `%` | left |
 | 8 | `-x`  `!x` (unary) | right |
-| 9 | `f(...)` (call), `( )` | |
+| 9 | `f(...)` (call), `a[i]` (index), `( )` | |
 
 Notes:
 - `+` on strings means **concatenation** (`"x=" + str(3)` → `"x=3"`); if either
@@ -191,7 +222,7 @@ Notes:
 - `&&` and `||` **short-circuit** and return `yes`/`no`.
 - `!` is logical negation based on truthiness.
 
-### 3.9 Truthiness
+### 3.10 Truthiness
 
 Used by `when`, `loop`, `&&`, `||`, `!`:
 
@@ -200,20 +231,26 @@ Used by `when`, `loop`, `&&`, `||`, `!`:
 | `no`, `none`, number `0`, empty string `""` | false |
 | everything else | true |
 
-### 3.10 Built-in functions (standard library)
+### 3.11 Built-in functions (standard library)
 
 | Function | Description |
 |---|---|
 | `say(...)` / `print(...)` | print the arguments (space-separated) |
 | `str(x)` | convert to string |
 | `num(s)` | string → number (returns `none` on parse failure) |
-| `len(s)` | string length |
+| `len(x)` | length of a string or array |
+| `push(arr, v)` | append `v` to `arr`; returns new length |
+| `pop(arr)` | remove & return the last element |
+| `char_at(s, i)` | the character at index `i` as a 1-char string (`""` if out of range) |
+| `ord(s)` | code point of the first character (`-1` if empty) |
+| `chr(n)` | the 1-char string for code point `n` |
+| `substr(s, start[, count])` | substring |
 | `abs(x)` `floor(x)` `sqrt(x)` | math helpers |
 | `max(...)` `min(...)` | largest / smallest (variadic) |
 | `upper(s)` `lower(s)` | change case |
-| `type(x)` | type name: `"number"`, `"string"`, `"bool"`, `"nil"`, `"function"` |
+| `type(x)` | type name: `"number"`, `"string"`, `"bool"`, `"nil"`, `"function"`, `"array"` |
 
-### 3.11 Scoping
+### 3.12 Scoping
 
 - Names resolve **local first, then global**.
 - Functions and global variables are usable anywhere (even before their
@@ -221,7 +258,7 @@ Used by `when`, `loop`, `&&`, `||`, `!`:
 - Not yet supported: closures capturing outer variables, nested functions,
   block-scoped locals.
 
-### 3.12 Grammar (summary, EBNF)
+### 3.13 Grammar (summary, EBNF)
 
 ```ebnf
 program    = { statement } ;
@@ -235,19 +272,21 @@ exprStmt   = expr ;
 block      = "{" { statement } "}" ;
 
 expr       = assignment ;
-assignment = IDENT "=" assignment | logicOr ;
+assignment = ( IDENT | index ) "=" assignment | logicOr ;
 logicOr    = logicAnd { "||" logicAnd } ;
 logicAnd   = equality { "&&" equality } ;
 equality   = comparison { ("==" | "!=") comparison } ;
 comparison = term { ("<" | ">" | "<=" | ">=") term } ;
 term       = factor { ("+" | "-") factor } ;
 factor     = unary  { ("*" | "/" | "%") unary } ;
-unary      = ("!" | "-") unary | call ;
-call       = primary { "(" [ args ] ")" } ;
-primary    = NUMBER | STRING | "yes" | "no" | "none" | IDENT | "(" expr ")" ;
+unary      = ("!" | "-") unary | postfix ;
+postfix    = primary { "(" [ args ] ")" | "[" expr "]" } ;
+index      = postfix "[" expr "]" ;
+primary    = NUMBER | STRING | "yes" | "no" | "none" | IDENT
+           | "[" [ expr { "," expr } ] "]" | "(" expr ")" ;
 ```
 
-### 3.13 Full example
+### 3.14 Full example
 
 See [examples/hello.ori](examples/hello.ori). In short:
 
@@ -266,20 +305,39 @@ loop i < 10 {
 
 ---
 
-## 4. Windows demo (a window with one button)
+## 4. Ori written in Ori (self-hosting)
+
+[examples/ori_in_ori.ori](examples/ori_in_ori.ori) is a full Ori interpreter
+**written in Ori**. It is ordinary Ori source — compiled to bytecode (or to an
+encrypted `.orx`) and executed on the Ori VM — and it contains:
+
+- a **tokenizer** built from `char_at` / `ord` / `substr`,
+- a **recursive-descent parser** producing an AST out of nested arrays,
+- a **tree-walking evaluator** with its own environments, function table, and a
+  `give`/return signalling mechanism (Ori has no exceptions).
+
+It interprets a meaningful subset of Ori: `hold`, `fold`/`give` (with recursion),
+`when`/`else`/`else when`, `loop`, arithmetic, comparisons, string concatenation,
+and the built-ins `say` / `str`.
+
+Run it:
 
 ```powershell
-src\OriDemo\bin\Release\net9.0-windows\OriDemo.exe
+oric run examples\ori_in_ori.ori
 ```
 
-The window shows a **“▶ Run Ori VM”** button. Each click decrypts `program.orx`
-and runs [program.ori](src/OriDemo/program.ori) on the Ori VM: it computes
-`fib(clickCount)` and updates the UI through the `ui_set_text` host function. The
-log panel records every run.
+It builds a small Ori program as text, then interprets it. Output:
 
-A **host function** is how Ori code calls into .NET. The demo registers two extras:
-- `get_clicks()` → the number of clicks so far
-- `ui_set_text(s)` → change the big label's text
+```
+Hello, Ori!
+fib(0) = 0
+fib(1) = 1
+...
+fib(10) = 55
+```
+
+The same file compiles to an encrypted `.orx` and runs identically — i.e. an
+encrypted Ori image whose job is to interpret Ori.
 
 ---
 
@@ -324,6 +382,7 @@ Add Sub Mul Div Mod Neg
 Eq Neq Lt Gt Le Ge Not
 Jmp JmpIfFalse JmpIfTrue
 Call Ret Halt
+MakeArray Index StoreIndex
 ```
 
 Pipeline: [Lexer](src/OriLang/Lexer.cs) → [Parser](src/OriLang/Parser.cs) →
@@ -331,20 +390,34 @@ Pipeline: [Lexer](src/OriLang/Lexer.cs) → [Parser](src/OriLang/Parser.cs) →
 
 ---
 
-## 7. Project layout
+## 7. Windows demo (a window with one button)
+
+```powershell
+src\OriDemo\bin\Release\net9.0-windows\OriDemo.exe
+```
+
+The window shows a **“▶ Run Ori VM”** button. Each click decrypts `program.orx`
+and runs [program.ori](src/OriDemo/program.ori) on the Ori VM: it computes
+`fib(clickCount)` and updates the UI through the `ui_set_text` host function. The
+log panel records every run. A **host function** is how Ori code calls into .NET;
+the demo registers `get_clicks()` and `ui_set_text(s)`.
+
+---
+
+## 8. Project layout
 
 | Folder | Role |
 |---|---|
 | `src/OriLang` | Core: lexer, parser, compiler, VM, encrypted container |
 | `src/oric`    | The `oric` CLI |
 | `src/OriDemo` | Windows (WinForms) app with one button |
-| `examples`    | `.ori` examples |
+| `examples`    | `.ori` examples, incl. the self-hosted interpreter |
 
 ---
 
-## 8. Current limitations
+## 9. Current limitations
 
-- Basic types only: number, string, bool, none, function (no arrays/objects yet).
+- Types: number, string, bool, none, function, array (no hash maps/objects yet).
 - No closures / nested functions / block-scoped locals.
 - Numbers are `double` (no arbitrary-precision integers).
 - Application-level anti-reversing (see section 5).

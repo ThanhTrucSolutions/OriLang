@@ -10,6 +10,9 @@ public sealed class BinaryExpr : Expr { public TokType Op; public Expr Left, Rig
 public sealed class LogicalExpr : Expr { public TokType Op; public Expr Left, Right; } // && ||
 public sealed class AssignExpr : Expr { public string Name; public Expr Value; }
 public sealed class CallExpr : Expr { public Expr Callee; public List<Expr> Args; }
+public sealed class ArrayExpr : Expr { public List<Expr> Elements; }
+public sealed class IndexExpr : Expr { public Expr Target; public Expr Index; }
+public sealed class IndexSetExpr : Expr { public Expr Target; public Expr Index; public Expr Value; }
 
 // ---- Statements ----
 public abstract class Stmt { public int Line; }

@@ -169,6 +169,8 @@ public sealed class Parser
             var value = Assignment();
             if (left is VarExpr v)
                 return new AssignExpr { Name = v.Name, Value = value, Line = line };
+            if (left is IndexExpr ix)
+                return new IndexSetExpr { Target = ix.Target, Index = ix.Index, Value = value, Line = line };
             throw new OriCompileError("invalid assignment target", line);
         }
         return left;
@@ -279,6 +281,15 @@ public sealed class Parser
                 Expect(TokType.RParen, "')'");
                 e = new CallExpr { Callee = e, Args = args, Line = line };
             }
+            else if (Check(TokType.LBracket))
+            {
+                int line = Advance().Line;
+                SkipTerminators();
+                var idx = Expression();
+                SkipTerminators();
+                Expect(TokType.RBracket, "']'");
+                e = new IndexExpr { Target = e, Index = idx, Line = line };
+            }
             else break;
         }
         return e;
@@ -312,6 +323,24 @@ public sealed class Parser
                 var inner = Expression();
                 Expect(TokType.RParen, "')'");
                 return inner;
+            case TokType.LBracket:
+            {
+                int line = Advance().Line;
+                var elems = new List<Expr>();
+                SkipTerminators();
+                if (!Check(TokType.RBracket))
+                {
+                    do
+                    {
+                        SkipTerminators();
+                        elems.Add(Expression());
+                        SkipTerminators();
+                    } while (Match(TokType.Comma));
+                }
+                SkipTerminators();
+                Expect(TokType.RBracket, "']'");
+                return new ArrayExpr { Elements = elems, Line = line };
+            }
             default:
                 throw new OriCompileError($"unexpected token '{t.Text}' in expression", t.Line);
         }

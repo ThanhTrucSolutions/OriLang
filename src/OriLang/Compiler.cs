@@ -248,6 +248,21 @@ public sealed class Compiler
                 foreach (var arg in c.Args) CompileExpr(ctx, arg);
                 Emit(ctx, OpCode.Call, c.Args.Count);
                 break;
+            case ArrayExpr arr:
+                foreach (var el in arr.Elements) CompileExpr(ctx, el);
+                Emit(ctx, OpCode.MakeArray, arr.Elements.Count);
+                break;
+            case IndexExpr ix:
+                CompileExpr(ctx, ix.Target);
+                CompileExpr(ctx, ix.Index);
+                Emit(ctx, OpCode.Index);
+                break;
+            case IndexSetExpr ixs:
+                CompileExpr(ctx, ixs.Target);
+                CompileExpr(ctx, ixs.Index);
+                CompileExpr(ctx, ixs.Value);
+                Emit(ctx, OpCode.StoreIndex); // leaves the assigned value on the stack
+                break;
             default:
                 throw new OriCompileError("unknown expression", e.Line);
         }
