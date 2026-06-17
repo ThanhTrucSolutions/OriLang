@@ -114,17 +114,30 @@ dependencies:
 
 ## 3. Platforms
 
-| Platform | `platform:` | Runs as | Hot reload |
+| Platform | `platform:` | Runs as | How |
 |---|---|---|---|
-| Windows | `windows` | native `orivm.exe app.orb` | `ori dev` |
-| Web | `web` | C VM compiled to **WASM**, runs `.orb` in the browser | `ori run` serves with live reload |
-| Android | `android` | VM cross-compiled (NDK) to **arm64** + `.orb` | — |
+| Windows (console) | `windows` | native `orivm.exe app.orb` | `ori run` / `ori dev` (hot reload) |
+| Windows (GUI) | `windows` + `ui: window` | native **Win32 window** embedding the C VM | `ori run` |
+| Web | `web` | C VM compiled to **WASM**, runs `.orb` in the browser | `ori run` (dev server + hot reload) |
+| Android | `android` | a real **APK**: C VM cross-compiled (NDK) + JNI | `ori build`, then `adb install` |
 
 ```bat
-ori run app              ::  native console  (samples in app/)
-ori run app-web          ::  http://127.0.0.1:5151  (WASM + hot reload; app-web/)
-ori run todo             ::  the GUI todo app  (todo/)
+ori run   app            ::  native console            (app/)
+ori run   desktop        ::  native Windows GUI window (desktop/)
+ori run   app-web        ::  http://127.0.0.1:5151     (WASM + hot reload; app-web/)
+ori run   todo           ::  the web GUI todo app      (todo/)
+ori build mobile         ::  builds mobile/build/mobile.apk, then:
+                         ::    adb install -r mobile\build\mobile.apk
 ```
+
+### Native GUI apps
+
+- **Windows** — [desktop/](desktop) is a real Win32 window (text box + list +
+  Add/Toggle/Delete) whose todo logic is the Ori model running on the C VM
+  embedded in [platforms/win/oriwin.c](platforms/win/oriwin.c).
+- **Android** — [mobile/](mobile) builds an installable APK. The C VM is
+  cross-compiled to a native `.so` with the NDK and called over JNI
+  ([platforms/android/](platforms/android)); the Ori program runs on-device.
 
 ### The Todo app (GUI) — [todo/](todo)
 
@@ -167,8 +180,10 @@ Details: [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md).
 | `tooling/oric.orb` | Shipped self-hosted compiler image |
 | `tooling/ori.c`    | The native CLI (`ori.exe`) |
 | `tooling/web/`     | Prebuilt WebAssembly runtime (`orivm.js` + `orivm.wasm`) |
-| `build.cmd`        | One-shot bootstrap (builds `orivm.exe` + `ori.exe`) |
-| `app/`, `app-web/`, `todo/` | Sample projects (each: `ori/` + `*.meta`) |
+| `build.cmd`        | One-shot bootstrap (builds `orivm.exe`, `ori.exe`, `oriwin.exe`) |
+| `platforms/win/`   | Win32 GUI host (`oriwin.c`) embedding the C VM |
+| `platforms/android/` | Android JNI bridge + APK builder (`build-apk.cmd`) |
+| `app/`, `desktop/`, `app-web/`, `todo/`, `mobile/` | Sample projects (each: `ori/` + `*.meta`) |
 | `examples/`        | Language examples |
 | `docs/TOOLCHAIN.md`| Architecture & build guide |
 

@@ -66,7 +66,7 @@ static int doctor(){
 }
 
 // ---- meta ----
-typedef struct { char name[128]; char entry[256]; char platform[32]; } Meta;
+typedef struct { char name[128]; char entry[256]; char platform[32]; char ui[16]; } Meta;
 
 static void find_meta(const char* proj, char* out){
     char pat[MAX_PATH]; snprintf(pat, MAX_PATH, "%s\\*.meta", proj);
@@ -85,7 +85,7 @@ static void trim(char* s){
 static int read_meta(const char* proj, Meta* m){
     char path[MAX_PATH]; find_meta(proj, path);
     if(!path[0]){ fprintf(stderr,"ori: no *.meta file in %s (not an Ori project?)\n", proj); return 1; }
-    strcpy(m->name,"app"); strcpy(m->entry,"ori/main.ori"); strcpy(m->platform,"windows");
+    strcpy(m->name,"app"); strcpy(m->entry,"ori/main.ori"); strcpy(m->platform,"windows"); strcpy(m->ui,"console");
     FILE* f=fopen(path,"r"); if(!f){ fprintf(stderr,"ori: cannot read %s\n",path); return 1; }
     char line[512];
     while(fgets(line,sizeof line,f)){
@@ -97,6 +97,7 @@ static int read_meta(const char* proj, Meta* m){
         if(!strcmp(k,"name")) strncpy(m->name,v,sizeof m->name-1);
         else if(!strcmp(k,"entry")) strncpy(m->entry,v,sizeof m->entry-1);
         else if(!strcmp(k,"platform")) strncpy(m->platform,v,sizeof m->platform-1);
+        else if(!strcmp(k,"ui")) strncpy(m->ui,v,sizeof m->ui-1);
     }
     fclose(f);
     return 0;
@@ -143,16 +144,29 @@ static int run_web(const char* proj, Meta* m){
 }
 
 static int build_android(const char* proj, Meta* m){
-    char orb[MAX_PATH]; if(compile_orb(proj,m,orb)) return 1;
-    char outDir[MAX_PATH], build[MAX_PATH];
-    join(build, proj, "build"); join(outDir, build, "android"); _mkdir(outDir);
-    char dst[MAX_PATH]; join(dst, outDir, "app.orb"); CopyFileA(orb, dst, FALSE);
-    printf("ori: android build -> %s (app.orb). NDK arm64 VM build: see docs/TOOLCHAIN.md\n", outDir);
-    return 0;
+    char orb[MAX_PATH]; if(compile_orb(proj,m,orb)){ fprintf(stderr,"ori: compile failed\n"); return 1; }
+    char apk[MAX_PATH]; snprintf(apk, MAX_PATH, "%s\\build\\%s.apk", proj, m->name);
+    char script[MAX_PATH]; join(script, HOME, "platforms\\android\\build-apk.cmd");
+    if(!exists(script)){ fprintf(stderr,"ori: android builder not found at %s\n", script); return 1; }
+    printf("ori: building Android APK (NDK + aapt2 + apksigner)...\n");
+    const char* argv[] = { "cmd", "/c", script, orb, apk, NULL };
+    int rc = run_wait("cmd", argv);
+    if(rc==0) printf("ori: android APK -> %s\n      install: adb install -r \"%s\"\n", apk, apk);
+    return rc;
+}
+
+static int run_window(const char* proj, Meta* m){
+    char orb[MAX_PATH]; if(compile_orb(proj,m,orb)){ fprintf(stderr,"ori: compile failed\n"); return 1; }
+    char gui[MAX_PATH]; join(gui, HOME, "platforms\\win\\oriwin.exe");
+    if(!exists(gui)){ fprintf(stderr,"ori: GUI host not built (run build.cmd)\n"); return 1; }
+    printf("ori: launching native window app\n");
+    const char* argv[] = { gui, orb, NULL };
+    return run_wait(gui, argv);
 }
 
 static int cmd_run(const char* proj, Meta* m, int hot){
     if(!strcmp(m->platform,"web")) return run_web(proj, m);
+    if(!strcmp(m->platform,"windows") && !strcmp(m->ui,"window")) return run_window(proj, m);
     char entry[MAX_PATH]; snprintf(entry,MAX_PATH,"%s\\%s",proj,m->entry); to_backslash(entry);
     if(!hot){
         char orb[MAX_PATH]; if(compile_orb(proj,m,orb)) { fprintf(stderr,"ori: compile failed\n"); return 1; }

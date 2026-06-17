@@ -86,13 +86,21 @@ See [todo/](../todo) for a complete GUI todo app.
        -sINVOKE_RUN=0 -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 \
        -sMODULARIZE=1 -sEXPORT_NAME=createOriVM -o tooling/web/orivm.js
   ```
-- **Android.** `ori build -Platform android` cross-compiles the VM to a native
-  `arm64` binary via the NDK and bundles `app.orb`:
+- **Windows GUI.** A project with `platform: windows` + `ui: window` runs as a
+  native Win32 window: `platforms/win/oriwin.c` embeds the C VM and drives an
+  Ori "model" (`add`/`toggle`/`remove`/`view`) via `ori_call_str`. `ori run`
+  launches it. Sample: `desktop/`.
+- **Android.** `ori build <proj>` for `platform: android` builds a real,
+  installable **APK** (`platforms/android/build-apk.cmd`): the C VM is
+  cross-compiled to `libori.so` with the NDK, called from a small Activity over
+  JNI ([platforms/android/oriandroid.c](../platforms/android/oriandroid.c)); the
+  Ori program ships as `assets/app.orb`. Pipeline: NDK clang → `javac` → `d8` →
+  `aapt2 link` → add dex/so/assets → `zipalign` → `apksigner`. Then:
   ```
-  adb push build/android/* /data/local/tmp/
-  adb shell 'cd /data/local/tmp && ./orivm-arm64 app.orb'
+  adb install -r mobile/build/mobile.apk
   ```
-  A packaged APK is future work.
+  Sample: `mobile/`. The VM exposes `ori_call_str` (and a say-output hook) so
+  the same model-driven approach works for interactive Android UIs.
 
 ## Image formats
 
