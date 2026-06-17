@@ -1,0 +1,7 @@
+name: console
+version: 1.0.0
+entry: ori/main.ori
+platform: windows
+
+# Console sample. `ori run samples/console` runs it on the native VM.
+dependencies:

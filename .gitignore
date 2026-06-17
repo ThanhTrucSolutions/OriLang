@@ -24,12 +24,15 @@ android_*.png
 *.dex
 *.class
 build/
+/ori
+core/orivm
+*.dSYM/
 core/orivm-android-*
 winapp.png
 androidapp.png
 
 # ...but DO keep the shipped self-hosted compiler image + prebuilt web runtime
-!tooling/oric.orb
-# (tooling/web/orivm.js and orivm.wasm are kept by default — not ignored)
+!tools/oric.orb
+# (tools/web/orivm.js and orivm.wasm are kept by default - not ignored)
 androidapp_s.png
 winfull.png

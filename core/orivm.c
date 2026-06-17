@@ -16,6 +16,22 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <errno.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <process.h>
+#include <direct.h>
+#include <io.h>
+#else
+#include <unistd.h>
+#include <sys/wait.h>
+#include <glob.h>
+#include <limits.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+#endif
 #include "sha256.h"
 #include "chacha20.h"
 
@@ -548,7 +564,7 @@ static Value h_read_file(VM* vm, Value* a, int argc){
     Str* path=argstr(a,argc,0);
     FILE* f=fopen(path->d,"rb"); if(!f){ rt_error("read_file: cannot open file"); }
     fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
-    char* buf=xmalloc(n+1); fread(buf,1,n,f); buf[n]=0; fclose(f);
+    char* buf=xmalloc(n+1); size_t got=fread(buf,1,n,f); (void)got; buf[n]=0; fclose(f);
     Value v=vstr_n(buf,(int)n); free(buf); return v;
 }
 static Value h_write_bytes(VM* vm, Value* a, int argc){
@@ -567,15 +583,191 @@ static Value h_write_file(VM* vm, Value* a, int argc){
 static Value h_argc(VM* vm, Value* a, int argc){ return vnum(vm->pargc); }
 static Value h_argv(VM* vm, Value* a, int argc){ int i=(int)argnum(a,argc,0); if(i<0||i>=vm->pargc) return vstr(""); return vstr(vm->pargv[i]); }
 
+// ---- OS / build host functions (so the toolchain can be written in Ori) ----
+static Value h_env(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_STR) return vstr(""); char* e=getenv(a[0].u.s->d); return vstr(e?e:""); }
+static Value h_exists(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_STR) return vnum(0); struct stat st; return vnum(stat(a[0].u.s->d,&st)==0?1:0); }
+static Value h_sh(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vnum(-1);
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+    return vnum(-1);
+#else
+    fflush(stdout); return vnum((double)system(a[0].u.s->d));
+#endif
+}
+static Value h_run(VM* vm, Value* a, int argc){
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+    return vnum(-1);
+#else
+    if(argc<2||a[0].t!=V_STR||a[1].t!=V_ARR) return vnum(-1);
+    Arr* ar=a[1].u.a;
+    char** av=xmalloc(sizeof(char*)*(ar->len+2));
+    av[0]=a[0].u.s->d;
+    for(int i=0;i<ar->len;i++) av[i+1]=(ar->it[i].t==V_STR)?ar->it[i].u.s->d:"";
+    av[ar->len+1]=NULL;
+    fflush(stdout);
+#ifdef _WIN32
+    intptr_t rc=_spawnvp(_P_WAIT, a[0].u.s->d, av);
+    free(av);
+    return vnum((double)rc);
+#else
+    pid_t pid=fork();
+    if(pid==0){ execvp(a[0].u.s->d,av); _exit(127); }
+    free(av);
+    if(pid<0) return vnum(127);
+    int st=0; while(waitpid(pid,&st,0)<0){ if(errno!=EINTR) return vnum(127); }
+    if(WIFEXITED(st)) return vnum(WEXITSTATUS(st));
+    if(WIFSIGNALED(st)) return vnum(128+WTERMSIG(st));
+    return vnum(st);
+#endif
+#endif
+}
+static Value h_mkdirs(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vnum(0);
+    char tmp[1024]; strncpy(tmp,a[0].u.s->d,sizeof tmp-1); tmp[sizeof tmp-1]=0;
+    for(char* p=tmp+1; *p; p++){
+        if(*p=='/'||*p=='\\'){ char c=*p; *p=0;
+#ifdef _WIN32
+            _mkdir(tmp);
+#else
+            mkdir(tmp,0755);
+#endif
+            *p=c;
+        }
+    }
+#ifdef _WIN32
+    _mkdir(tmp);
+#else
+    mkdir(tmp,0755);
+#endif
+    return vnum(1);
+}
+static Value h_copy(VM* vm, Value* a, int argc){
+    if(argc<2||a[0].t!=V_STR||a[1].t!=V_STR) return vnum(0);
+    FILE* s=fopen(a[0].u.s->d,"rb"); if(!s) return vnum(0);
+    FILE* d=fopen(a[1].u.s->d,"wb"); if(!d){ fclose(s); return vnum(0); }
+    char buf[8192]; size_t r;
+    while((r=fread(buf,1,sizeof buf,s))>0) fwrite(buf,1,r,d);
+    fclose(s); fclose(d); return vnum(1);
+}
+static Value h_glob(VM* vm, Value* a, int argc){
+    Value arr=varr_new();
+    if(argc<1||a[0].t!=V_STR) return arr;
+#ifdef _WIN32
+    const char* pat=a[0].u.s->d;
+    char dir[1024]=""; strncpy(dir,pat,sizeof dir-1);
+    char* sl1=strrchr(dir,'\\'), *sl2=strrchr(dir,'/');
+    char* sl=sl1>sl2?sl1:sl2;
+    if(sl) sl[1]=0; else dir[0]=0;
+    struct _finddata_t fd; intptr_t h=_findfirst(pat,&fd);
+    if(h!=-1){ do { if(strcmp(fd.name,".")&&strcmp(fd.name,"..")) {
+        char full[1024]; snprintf(full,sizeof full,"%s%s",dir,fd.name);
+        arr_push(arr.u.a, vstr(full));
+    } } while(_findnext(h,&fd)==0); _findclose(h); }
+#else
+    glob_t g;
+    if(glob(a[0].u.s->d,0,NULL,&g)==0){
+        for(size_t i=0;i<g.gl_pathc;i++) arr_push(arr.u.a,vstr(g.gl_pathv[i]));
+        globfree(&g);
+    }
+#endif
+    return arr;
+}
+static Value h_abspath(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vstr("");
+#ifdef _WIN32
+    char out[1024]; if(_fullpath(out,a[0].u.s->d,sizeof out)) return vstr(out);
+#else
+    char out[PATH_MAX]; if(realpath(a[0].u.s->d,out)) return vstr(out);
+#endif
+    return a[0];
+}
+static Value h_http_get(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vstr("");
+    const char* url=a[0].u.s->d;
+    char cmd[2048];
+#ifdef _WIN32
+    snprintf(cmd,sizeof cmd,"curl -sL --max-time 8 --connect-timeout 5 \"%s\" 2>nul",url);
+    FILE* p=_popen(cmd,"r");
+#else
+    snprintf(cmd,sizeof cmd,"curl -sL --max-time 8 --connect-timeout 5 '%s' 2>/dev/null",url);
+    FILE* p=popen(cmd,"r");
+#endif
+    if(!p) return vstr("");
+    char buf[65536]; size_t total=0;
+    size_t r;
+    while((r=fread(buf+total,1,sizeof buf-total-1,p))>0){ total+=r; if(total>=sizeof buf-1) break; }
+    buf[total]=0;
+#ifdef _WIN32
+    _pclose(p);
+#else
+    pclose(p);
+#endif
+    return vstr_n(buf,(int)total);
+}
+static Value h_is_dir(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vnum(0);
+    struct stat st; if(stat(a[0].u.s->d,&st)!=0) return vnum(0);
+    return vnum((st.st_mode & S_IFDIR)?1:0);
+}
+static Value h_mtime(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vnum(0);
+#ifdef _WIN32
+    WIN32_FILE_ATTRIBUTE_DATA d;
+    if(!GetFileAttributesExA(a[0].u.s->d,GetFileExInfoStandard,&d)) return vnum(0);
+    long long t=((long long)d.ftLastWriteTime.dwHighDateTime<<32)|d.ftLastWriteTime.dwLowDateTime;
+    return vnum((double)t);
+#else
+    struct stat st; if(stat(a[0].u.s->d,&st)!=0) return vnum(0);
+    return vnum((double)st.st_mtime);
+#endif
+}
+static Value h_sleep_ms(VM* vm, Value* a, int argc){
+    int ms=argc>0?(int)a[0].u.num:0;
+#ifdef _WIN32
+    Sleep((DWORD)(ms<0?0:ms));
+#else
+    if(ms>0){ struct timespec ts; ts.tv_sec=ms/1000; ts.tv_nsec=(long)(ms%1000)*1000000L; nanosleep(&ts,NULL); }
+#endif
+    return vnil();
+}
+static Value h_read_bytes_b64(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vstr("");
+    FILE* f=fopen(a[0].u.s->d,"rb"); if(!f) return vstr("");
+    fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
+    unsigned char* data=(unsigned char*)xmalloc(n>0?n:1);
+    size_t got=fread(data,1,(size_t)n,f); fclose(f); (void)got;
+    static const char T[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t outLen=((n+2)/3)*4;
+    char* out=(char*)xmalloc(outLen+1);
+    size_t i=0,j=0;
+    while(i<(size_t)n){
+        unsigned aa=i<(size_t)n?data[i++]:0;
+        unsigned bb=i<(size_t)n?data[i++]:0;
+        unsigned cc=i<(size_t)n?data[i++]:0;
+        unsigned triple=(aa<<16)|(bb<<8)|cc;
+        out[j++]=T[(triple>>18)&63]; out[j++]=T[(triple>>12)&63];
+        out[j++]=T[(triple>>6)&63]; out[j++]=T[triple&63];
+    }
+    if(n%3==1){out[outLen-2]='=';out[outLen-1]='=';}
+    else if(n%3==2){out[outLen-1]='=';}
+    out[outLen]=0;
+    free(data);
+    Value v=vstr_n(out,(int)outLen); free(out); return v;
+}
+
 static void register_hosts(VM* vm){
     static const char* names[] = {
         "say","print","str","num","len","push","pop","char_at","ord","chr","substr","type",
         "abs","floor","sqrt","max","min","upper","lower",
-        "read_file","write_bytes","write_file","argc","argv" };
+        "read_file","write_bytes","write_file","argc","argv",
+        "env","exists","sh","run","mkdirs","copy","glob","abspath",
+        "is_dir","mtime","sleep_ms","read_bytes_b64","http_get" };
     static HostFn fns[] = {
         h_say,h_say,h_str,h_num,h_len,h_push,h_pop,h_char_at,h_ord,h_chr,h_substr,h_type,
         h_abs,h_floor,h_sqrt,h_max,h_min,h_upper,h_lower,
-        h_read_file,h_write_bytes,h_write_file,h_argc,h_argv };
+        h_read_file,h_write_bytes,h_write_file,h_argc,h_argv,
+        h_env,h_exists,h_sh,h_run,h_mkdirs,h_copy,h_glob,h_abspath,
+        h_is_dir,h_mtime,h_sleep_ms,h_read_bytes_b64,h_http_get };
     int n=(int)(sizeof(names)/sizeof(names[0]));
     vm->hostNames=names; vm->hostFns=fns; vm->hostCount=n;
     for(int i=0;i<n;i++) g_set(vm,names[i],vhost(i));
@@ -587,7 +779,7 @@ static void register_hosts(VM* vm){
 static uint8_t* read_all(const char* path, size_t* outN){
     FILE* f=fopen(path,"rb"); if(!f){ fprintf(stderr,"cannot open %s\n",path); exit(2); }
     fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
-    uint8_t* b=xmalloc(n>0?n:1); fread(b,1,n,f); fclose(f); *outN=(size_t)n; return b;
+    uint8_t* b=xmalloc(n>0?n:1); size_t got=fread(b,1,n,f); (void)got; fclose(f); *outN=(size_t)n; return b;
 }
 
 static const char* OPNAME[]={

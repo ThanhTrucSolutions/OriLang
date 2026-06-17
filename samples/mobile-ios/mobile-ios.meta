@@ -1,0 +1,8 @@
+name: mobile-ios
+version: 1.0.0
+entry: ori/main.ori
+platform: ios
+
+# A native iOS Simulator app. `ori build samples/mobile-ios` creates
+# samples/mobile-ios/build/ios/mobile-ios.app.
+dependencies:

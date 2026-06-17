@@ -1,0 +1,10 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "defaultTitle": "Ori app",
+    "titleBarColor": "#111827",
+    "backgroundColor": "#0f1116"
+  }
+}

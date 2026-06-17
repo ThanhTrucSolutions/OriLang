@@ -1,0 +1,7 @@
+name: grab-mini-app
+version: 1.0.0
+entry: ori/main.ori
+platform: grab-mini-app
+
+# `ori build samples/grab-mini-app` creates build/grab-mini-app.
+dependencies:

@@ -1,0 +1,52 @@
+// desktop-win/ori/main.ori — Todo list GUI for Windows (Win32 host).
+// The host calls render() to paint the window and dispatch(ev, arg) on user
+// actions. Widget spec lines are separated by chr(10) newlines:
+//   text|CONTENT
+//   edit|PLACEHOLDER
+//   btn|EVENT|ARG|CAPTION          (ARG "@edit" = current text-field value)
+//   item|TOGGLE_EVENT|DEL_EVENT|ARG|CAPTION
+
+hold todos = []    // each element is [doneFlag, label]
+
+fold render {
+    hold s = ""
+    s = s + "text|Ori Todo — Windows" + chr 10
+    s = s + "text|Logic written in Ori; drawn by the native Win32 host" + chr 10
+    s = s + "edit|What needs doing?" + chr 10
+    s = s + "btn|add|@edit|Add" + chr 10
+    hold i = 0
+    loop i < len todos {
+        hold it  = todos[i]
+        hold mark = "[ ] "
+        when it[0] == 1 { mark = "[x] " }
+        s = s + "item|toggle|del|" + str i + "|" + mark + it[1] + chr 10
+        i = i + 1
+    }
+    give s
+}
+
+fold dispatch ev arg {
+    when ev == "add" {
+        when len arg > 0 { push (todos, [0, arg]) }
+    } else when ev == "toggle" {
+        hold idx = num arg
+        when idx >= 0 && idx < len todos {
+            hold it = todos[idx]
+            when it[0] == 0 { it[0] = 1 } else { it[0] = 0 }
+        }
+    } else when ev == "del" {
+        hold idx = num arg
+        hold kept = []
+        hold i = 0
+        loop i < len todos {
+            when i != idx { push (kept, todos[i]) }
+            i = i + 1
+        }
+        todos = kept
+    }
+    give render()
+}
+
+// Pre-loaded sample todos
+push (todos, [0, "Build the Ori compiler"])
+push (todos, [0, "Ship to every platform"])

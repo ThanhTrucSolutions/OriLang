@@ -1,0 +1,11 @@
+<view class="page">
+  <block wx:for="{{nodes}}" wx:key="id">
+    <view wx:if="{{item.isText}}" class="text {{item.titleClass}}">{{item.text}}</view>
+    <input wx:if="{{item.isEdit}}" class="edit" placeholder="{{item.placeholder}}" value="{{editText}}" bindinput="onInput" bindconfirm="onConfirm" />
+    <button wx:if="{{item.isButton}}" class="primary" data-ev="{{item.ev}}" data-arg="{{item.arg}}" bindtap="onAction">{{item.text}}</button>
+    <view wx:if="{{item.isItem}}" class="item {{item.doneClass}}">
+      <text class="itemText" data-ev="{{item.tap}}" data-arg="{{item.arg}}" bindtap="onAction">{{item.text}}</text>
+      <button class="delete" data-ev="{{item.del}}" data-arg="{{item.arg}}" bindtap="onAction">X</button>
+    </view>
+  </block>
+</view>

@@ -1,0 +1,9 @@
+name: mobile-android
+version: 1.0.0
+entry: ori/main.ori
+platform: android
+
+# A native Android app. `ori build samples/mobile-android` cross-compiles the C VM with the NDK,
+# packages an APK (the Ori program runs via JNI), then:
+#   adb install -r samples/mobile-android/build/mobile-android.apk
+dependencies:

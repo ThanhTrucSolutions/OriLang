@@ -1,0 +1,11 @@
+<view class="page">
+  <block a:for="{{nodes}}" a:key="id">
+    <view a:if="{{item.isText}}" class="text {{item.titleClass}}">{{item.text}}</view>
+    <input a:if="{{item.isEdit}}" class="edit" placeholder="{{item.placeholder}}" value="{{editText}}" onInput="onInput" onConfirm="onConfirm" />
+    <button a:if="{{item.isButton}}" class="primary" data-ev="{{item.ev}}" data-arg="{{item.arg}}" onTap="onAction">{{item.text}}</button>
+    <view a:if="{{item.isItem}}" class="item {{item.doneClass}}">
+      <text class="itemText" data-ev="{{item.tap}}" data-arg="{{item.arg}}" onTap="onAction">{{item.text}}</text>
+      <button class="delete" data-ev="{{item.del}}" data-arg="{{item.arg}}" onTap="onAction">X</button>
+    </view>
+  </block>
+</view>

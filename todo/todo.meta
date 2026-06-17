@@ -1,7 +1,0 @@
-name: todo
-version: 1.0.0
-entry: ori/main.ori
-platform: web
-
-# A GUI todo app: the model is Ori (ori/main.ori), the view is web/index.html.
-dependencies:

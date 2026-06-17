@@ -1,0 +1,9 @@
+{
+  "appid": "touristappid",
+  "projectname": "ori-wechat-mini-program",
+  "compileType": "miniprogram",
+  "setting": {
+    "es6": true,
+    "minified": false
+  }
+}

@@ -1,0 +1,57 @@
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 44rpx 36rpx;
+  background: #0f1116;
+  color: #e6e9f0;
+}
+.text {
+  display: block;
+  font-size: 30rpx;
+  line-height: 1.55;
+  padding: 6rpx 0;
+}
+.text.title {
+  font-size: 44rpx;
+  font-weight: 700;
+  padding-bottom: 8rpx;
+}
+.edit {
+  height: 84rpx;
+  margin: 22rpx 0 12rpx;
+  padding: 0 24rpx;
+  border: 1rpx solid #2a2e38;
+  border-radius: 8rpx;
+  background: #181a20;
+  color: #e6e9f0;
+}
+.primary {
+  margin: 12rpx 0 18rpx;
+  border-radius: 8rpx;
+  background: #3078dc;
+  color: #fff;
+  font-weight: 600;
+}
+.item {
+  display: flex;
+  align-items: center;
+  min-height: 86rpx;
+  border-bottom: 1rpx solid #23272f;
+}
+.itemText {
+  flex: 1;
+  color: #e6e9f0;
+  font-size: 31rpx;
+}
+.item.done .itemText {
+  color: #6b7280;
+  text-decoration: line-through;
+}
+.delete {
+  width: 96rpx;
+  min-width: 96rpx;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: #9aa0aa;
+}

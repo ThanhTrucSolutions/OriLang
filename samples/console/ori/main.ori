@@ -1,0 +1,33 @@
+// console/ori/main.ori — fetch a programming joke + local Fibonacci demo.
+// Build: ori build samples/console   Run: ori run samples/console
+
+fold fib n {
+    when n < 2 { give n }
+    give fib (n - 1) + fib (n - 2)
+}
+
+// ── Fibonacci demo ──────────────────────────────────────────────────────────
+say "=== Ori Console App ==="
+say ""
+say "-- Fibonacci sequence --"
+hold i = 0
+loop i < 10 {
+    say ("  fib(" + str i + ") = " + str (fib i))
+    i = i + 1
+}
+
+// ── Random programming joke from JokeAPI ────────────────────────────────────
+say ""
+say "-- Fetching a programming joke... --"
+hold url  = "https://v2.jokeapi.dev/joke/Programming?format=txt"
+hold body = http_get url
+
+when len body > 0 {
+    say ""
+    say body
+    say ""
+} else {
+    say "(Could not reach JokeAPI — check your connection.)"
+}
+
+say "Powered by the Ori C VM."

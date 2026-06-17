@@ -1,0 +1,7 @@
+name: wechat-mini-program
+version: 1.0.0
+entry: ori/main.ori
+platform: wechat-mini-program
+
+# `ori build samples/wechat-mini-program` creates build/wechat-mini-program.
+dependencies:

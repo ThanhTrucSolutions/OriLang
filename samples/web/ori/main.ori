@@ -1,0 +1,83 @@
+// samples/web/ori/main.ori — crypto price tracker running in the browser (WASM).
+// JS fetches prices from CoinGecko (free API, no key) and calls
+// ori_call_str("update", json_body). Ori parses + renders the widget spec.
+
+hold coins = []   // each: [name, symbol, price_str]
+hold status = "Loading prices..."
+
+fold json_str body key {
+    hold search = "\"" + key + "\":"
+    hold ki = 0
+    loop ki < len(body) {
+        when ki + len(search) <= len(body) && substr(body, ki, len(search)) == search {
+            hold vi = ki + len(search)
+            loop vi < len(body) && char_at(body, vi) != "\"" { vi = vi + 1 }
+            vi = vi + 1
+            hold end = vi
+            loop end < len(body) && char_at(body, end) != "\"" { end = end + 1 }
+            give substr(body, vi, end - vi)
+        }
+        ki = ki + 1
+    }
+    give ""
+}
+
+fold json_num_after body from_pos {
+    hold vi = from_pos
+    loop vi < len(body) && (char_at(body, vi) == " " || char_at(body, vi) == "\t") { vi = vi + 1 }
+    hold end = vi
+    loop end < len(body) && char_at(body, end) != "," && char_at(body, end) != "}" { end = end + 1 }
+    give substr(body, vi, end - vi)
+}
+
+fold find_usd body coin_id {
+    hold search = "\"" + coin_id + "\""
+    hold ki = 0
+    loop ki < len(body) {
+        when ki + len(search) <= len(body) && substr(body, ki, len(search)) == search {
+            hold vi = ki + len(search)
+            loop vi < len(body) && char_at(body, vi) != "{" { vi = vi + 1 }
+            vi = vi + 1
+            hold usd_k = "\"usd\":"
+            loop vi < len(body) {
+                when vi + len(usd_k) <= len(body) && substr(body, vi, len(usd_k)) == usd_k {
+                    give json_num_after(body, vi + len(usd_k))
+                }
+                vi = vi + 1
+            }
+        }
+        ki = ki + 1
+    }
+    give "?"
+}
+
+fold render {
+    hold s = "text|Ori Crypto Tracker (WASM + free CoinGecko API)" + chr(10)
+    s = s + "text|" + status + chr(10)
+    s = s + "btn|refresh||Refresh prices" + chr(10)
+    s = s + "text| " + chr(10)
+    hold i = 0
+    loop i < len(coins) {
+        hold c = coins[i]
+        s = s + "text|" + c[0] + " (" + c[1] + ")  $" + c[2] + chr(10)
+        i = i + 1
+    }
+    give s
+}
+
+fold update body {
+    when len(body) == 0 { status = "Error: could not load prices."; give render() }
+    coins = []
+    push(coins, ["Bitcoin",  "BTC", find_usd(body, "bitcoin")])
+    push(coins, ["Ethereum", "ETH", find_usd(body, "ethereum")])
+    push(coins, ["Solana",   "SOL", find_usd(body, "solana")])
+    push(coins, ["BNB",      "BNB", find_usd(body, "binancecoin")])
+    status = "Prices updated. (CoinGecko free API)"
+    give render()
+}
+
+fold dispatch ev arg {
+    when ev == "refresh" { status = "Refreshing..."; give render() }
+    when ev == "update"  { give update(arg) }
+    give render()
+}

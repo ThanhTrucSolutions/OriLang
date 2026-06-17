@@ -1,0 +1,56 @@
+hold HOME   = env("ORI_HOME")
+hold IS_WIN = env("ORI_WIN") == "1"
+hold SEP    = "/"
+when IS_WIN { SEP = "\\" }
+fold jp a b { give a + SEP + b }
+
+fold str_find_char s ch {
+    hold i = 0
+    loop i < len(s) {
+        when char_at(s, i) == ch { give i }
+        i = i + 1
+    }
+    give -1
+}
+
+fold trim_ws s {
+    hold start = 0
+    loop start < len(s) && (char_at(s, start) == " " || char_at(s, start) == "\t" || char_at(s, start) == "\r" || char_at(s, start) == "\n") {
+        start = start + 1
+    }
+    s = substr(s, start, len(s) - start)
+    hold end = len(s) - 1
+    loop end >= 0 && (char_at(s, end) == " " || char_at(s, end) == "\t" || char_at(s, end) == "\r" || char_at(s, end) == "\n") {
+        end = end - 1
+    }
+    give substr(s, 0, end + 1)
+}
+
+say("trim test: '" + trim_ws("  hello  ") + "'")
+say("trim empty: '" + trim_ws("") + "'")
+
+hold proj = argv(0)
+say("proj=" + proj)
+hold pattern = jp(proj, "*.meta")
+say("pattern=" + pattern)
+hold files = glob(pattern)
+say("nfiles=" + str(len(files)))
+hold fi = 0
+loop fi < len(files) { say("  " + files[fi]); fi = fi + 1 }
+
+when len(files) > 0 {
+    hold content = read_file(files[0])
+    say("content_len=" + str(len(content)))
+    hold pos = 0
+    hold n = len(content)
+    loop pos <= n {
+        hold nl = pos
+        loop nl < n && char_at(content, nl) != "\n" { nl = nl + 1 }
+        hold line = trim_ws(substr(content, pos, nl - pos))
+        when len(line) > 0 && char_at(line, 0) != "#" {
+            say("line: '" + line + "'")
+        }
+        pos = nl + 1
+    }
+}
+say("done")

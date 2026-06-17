@@ -1,0 +1,7 @@
+name: todo-web
+version: 1.0.0
+entry: ori/main.ori
+platform: web
+
+# GUI todo sample: the model is Ori, the view is web/index.html.
+dependencies:
