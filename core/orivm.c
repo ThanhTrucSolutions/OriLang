@@ -360,6 +360,8 @@ struct VM {
     int pargc; char** pargv;   // program arguments
 };
 
+static VM gvm;   // the persistent VM instance (kept alive for web event callbacks)
+
 static void g_set(VM* vm, const char* name, Value v){
     for(int i=0;i<vm->gcount;i++) if(strcmp(vm->globals[i].name,name)==0){ vm->globals[i].v=v; return; }
     if(vm->gcount>=vm->gcap){ vm->gcap=vm->gcap?vm->gcap*2:32; vm->globals=realloc(vm->globals,sizeof(GVar)*vm->gcap); }
@@ -619,15 +621,31 @@ int main(int argc, char** argv){
     else die("unknown image format (expected .orx or .orb)");
     if(disMode){ disassemble(prog); return 0; }
 
-    VM vm; memset(&vm,0,sizeof vm);
-    vm.prog=prog;
-    vm.stackCap=256; vm.stack=xmalloc(sizeof(Value)*vm.stackCap); vm.sp=0;
-    vm.frameCap=64; vm.frames=xmalloc(sizeof(Frame)*vm.frameCap); vm.fp=0;
-    vm.pargc=argc-2; vm.pargv=argv+2;
-    register_hosts(&vm);
-    for(int i=0;i<prog->funcCount;i++){ if(strcmp(prog->funcs[i].name,"__main__")!=0) g_set(&vm,prog->funcs[i].name,vfunc(i)); }
+    VM* vm=&gvm; memset(vm,0,sizeof *vm);
+    vm->prog=prog;
+    vm->stackCap=256; vm->stack=xmalloc(sizeof(Value)*vm->stackCap); vm->sp=0;
+    vm->frameCap=64; vm->frames=xmalloc(sizeof(Frame)*vm->frameCap); vm->fp=0;
+    vm->pargc=argc-2; vm->pargv=argv+2;
+    register_hosts(vm);
+    for(int i=0;i<prog->funcCount;i++){ if(strcmp(prog->funcs[i].name,"__main__")!=0) g_set(vm,prog->funcs[i].name,vfunc(i)); }
 
-    push_frame(&vm,prog->mainIndex,NULL,0);
-    run(&vm);
+    push_frame(vm,prog->mainIndex,NULL,0);
+    run(vm);
     return 0;
 }
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+// Call an Ori global function (taking one string arg) and return its string
+// result. Used by the web GUI to drive a persistent Ori "model" from JS events.
+EMSCRIPTEN_KEEPALIVE
+char* ori_call_str(const char* fname, const char* arg){
+    Value f;
+    if(!g_get(&gvm, fname, &f) || f.t!=V_FUNC) return dupstr("");
+    Value a = vstr(arg ? arg : "");
+    push_frame(&gvm, f.u.i, &a, 1);
+    Value r = run(&gvm);
+    if(r.t==V_STR) return dupstr(r.u.s->d);
+    return val_cstr(r);
+}
+#endif

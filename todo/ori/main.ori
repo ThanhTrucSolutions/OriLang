@@ -1,0 +1,47 @@
+// todo/ori/main.ori — the Todo app's logic (the "model"), written in Ori.
+// The web UI (todo/web/index.html) calls these functions on each event and
+// renders whatever `view` returns. No parentheses for calls (paren-free Ori).
+
+hold todos = []      // each item is [doneFlag, text]
+
+// Serialize the list as lines "index|done|text" for the UI to render.
+fold view s {
+    hold out = ""
+    hold i = 0
+    loop i < len todos {
+        hold item = todos[i]
+        out = out + str i + "|" + str (item[0]) + "|" + item[1] + chr 10
+        i = i + 1
+    }
+    give out
+}
+
+fold add text {
+    push (todos, [0, text])
+    give view ""
+}
+
+fold toggle s {
+    hold idx = num s
+    when idx >= 0 && idx < len todos {
+        hold item = todos[idx]
+        when item[0] == 0 { item[0] = 1 } else { item[0] = 0 }
+    }
+    give view ""
+}
+
+fold remove s {
+    hold idx = num s
+    hold kept = []
+    hold i = 0
+    loop i < len todos {
+        when i != idx { push (kept, todos[i]) }
+        i = i + 1
+    }
+    todos = kept
+    give view ""
+}
+
+// Seed a couple of items so the list isn't empty on first load.
+add "Learn the Ori language"
+add "Build a todo app with Ori"

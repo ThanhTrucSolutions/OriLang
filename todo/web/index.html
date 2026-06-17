@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ori Todo</title>
+<style>
+  body { background:#0f1116; color:#e6e9f0; font-family:'Segoe UI',sans-serif; margin:0; padding:32px; }
+  .card { max-width:520px; margin:0 auto; background:#181a20; border-radius:14px; padding:24px;
+          box-shadow:0 10px 40px rgba(0,0,0,.4); }
+  h1 { margin:0 0 4px; font-size:24px; }
+  .sub { color:#9aa0aa; font-size:13px; margin-bottom:18px; }
+  .row { display:flex; gap:8px; margin-bottom:16px; }
+  input[type=text] { flex:1; padding:12px 14px; border-radius:8px; border:1px solid #2a2e38;
+                     background:#0f1116; color:#e6e9f0; font-size:15px; outline:none; }
+  input[type=text]:focus { border-color:#3078dc; }
+  .add { padding:12px 18px; border:none; border-radius:8px; background:#3078dc; color:#fff;
+         font-weight:600; font-size:15px; cursor:pointer; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { display:flex; align-items:center; gap:10px; padding:11px 6px; border-bottom:1px solid #23272f; }
+  li:last-child { border-bottom:none; }
+  li .txt { flex:1; font-size:15px; }
+  li.done .txt { text-decoration:line-through; color:#6b7280; }
+  .del { background:transparent; border:none; color:#7a8089; font-size:16px; cursor:pointer; }
+  .del:hover { color:#ff6b6b; }
+  input[type=checkbox] { width:18px; height:18px; accent-color:#3078dc; cursor:pointer; }
+  .empty { color:#6b7280; font-style:italic; padding:14px 6px; }
+  .foot { color:#5a606b; font-size:12px; margin-top:16px; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Ori Todo</h1>
+    <div class="sub">GUI app — the logic runs on the Ori VM (WebAssembly), no JS framework.</div>
+    <div class="row">
+      <input id="inp" type="text" placeholder="What needs doing?" autocomplete="off" />
+      <button id="addbtn" class="add">Add</button>
+    </div>
+    <ul id="list"></ul>
+    <div class="foot" id="foot">starting the Ori VM…</div>
+  </div>
+
+  <script src="orivm.js"></script>
+  <script>
+    let Module = null;
+
+    function call(fn, arg) {
+      return Module.ccall('ori_call_str', 'string', ['string', 'string'], [fn, arg]);
+    }
+
+    function render(view) {
+      const list = document.getElementById('list');
+      list.innerHTML = "";
+      const lines = view.split("\n").filter(l => l.length > 0);
+      if (lines.length === 0) {
+        list.innerHTML = '<li class="empty">No tasks yet — add one above.</li>';
+      }
+      let done = 0;
+      for (const line of lines) {
+        const parts = line.split("|");
+        const idx = parts[0], isDone = parts[1] === "1";
+        const text = parts.slice(2).join("|");
+        if (isDone) done++;
+        const li = document.createElement('li');
+        if (isDone) li.className = 'done';
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = isDone;
+        cb.onclick = () => render(call('toggle', idx));
+        const span = document.createElement('span'); span.className = 'txt'; span.textContent = text;
+        const del = document.createElement('button'); del.className = 'del'; del.textContent = '✕';
+        del.onclick = () => render(call('remove', idx));
+        li.append(cb, span, del);
+        list.append(li);
+      }
+      document.getElementById('foot').textContent =
+        lines.length + " task(s), " + done + " done — powered by Ori on WASM";
+    }
+
+    function addTask() {
+      const inp = document.getElementById('inp');
+      const t = inp.value.trim();
+      if (!t) return;
+      inp.value = "";
+      render(call('add', t));
+    }
+
+    (async () => {
+      Module = await createOriVM({ print: () => {}, printErr: () => {} });
+      const res = await fetch('app.orb?' + Date.now(), { cache: 'no-store' });
+      const buf = new Uint8Array(await res.arrayBuffer());
+      Module.FS.writeFile('/app.orb', buf);
+      Module.callMain(['/app.orb']);          // runs main: defines model + seeds tasks
+      document.getElementById('addbtn').onclick = addTask;
+      document.getElementById('inp').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
+      render(call('view', ''));
+    })();
+  </script>
+</body>
+</html>
