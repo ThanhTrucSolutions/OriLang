@@ -153,6 +153,35 @@ public sealed class VirtualMachine
                         goto NextFrame;
                     }
 
+                    case OpCode.MakeArray:
+                    {
+                        int n = ins.Arg;
+                        var items = new List<Value>(n);
+                        for (int i = 0; i < n; i++) items.Add(Value.Nil);
+                        for (int i = n - 1; i >= 0; i--) items[i] = Pop();
+                        Push(Value.Array(items));
+                        break;
+                    }
+                    case OpCode.Index:
+                    {
+                        var idx = Pop();
+                        var target = Pop();
+                        Push(DoIndex(target, idx));
+                        break;
+                    }
+                    case OpCode.StoreIndex:
+                    {
+                        var val = Pop();
+                        var idx = Pop();
+                        var target = Pop();
+                        if (target.Type != ValueType.Array)
+                            throw new OriRuntimeError($"cannot index-assign into {target.Type}");
+                        int i = CheckIndex(idx, target.AsArray.Count);
+                        target.AsArray[i] = val;
+                        Push(val);
+                        break;
+                    }
+
                     default:
                         throw new OriRuntimeError($"bad opcode {ins.Op}");
                 }
@@ -188,6 +217,33 @@ public sealed class VirtualMachine
             }
             default:
                 throw new OriRuntimeError($"value of type {callee.Type} is not callable");
+        }
+    }
+
+    private static int CheckIndex(in Value idx, int count)
+    {
+        if (idx.Type != ValueType.Number)
+            throw new OriRuntimeError($"index must be a number, got {idx.Type}");
+        int i = (int)idx.AsNumber;
+        if (i < 0 || i >= count)
+            throw new OriRuntimeError($"index {i} out of range (0..{count - 1})");
+        return i;
+    }
+
+    private static Value DoIndex(in Value target, in Value idx)
+    {
+        switch (target.Type)
+        {
+            case ValueType.Array:
+                return target.AsArray[CheckIndex(idx, target.AsArray.Count)];
+            case ValueType.Str:
+            {
+                string s = target.AsStr;
+                int i = CheckIndex(idx, s.Length);
+                return Value.Str(s[i].ToString());
+            }
+            default:
+                throw new OriRuntimeError($"cannot index into {target.Type}");
         }
     }
 

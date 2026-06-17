@@ -1,0 +1,591 @@
+// ============================================================================
+//  ori_in_ori.ori — an Ori interpreter written in Ori.
+//
+//  This is real Ori source, compiled to bytecode and run on the Ori VM. It
+//  contains a full tokenizer + recursive-descent parser + tree-walking
+//  evaluator for a meaningful subset of Ori, and then uses that interpreter to
+//  run an Ori program (recursive fib + a loop). In other words: Ori runs Ori.
+//
+//  Supported subset: numbers, strings, hold/assignment, fold/give (recursion),
+//  when/else/else-when, loop, arithmetic (+ - * / %), comparisons, string
+//  concatenation, and the built-ins say() and str().
+// ============================================================================
+
+// ---- token kinds ----
+hold TK_NUM = 0
+hold TK_STR = 1
+hold TK_IDENT = 2
+hold TK_SYM = 3
+hold TK_EOF = 4
+
+// ---- AST node tags ----
+hold N_NUM = 0
+hold N_STR = 1
+hold N_VAR = 2
+hold N_BIN = 3
+hold N_UNARY = 4
+hold N_ASSIGN = 5
+hold N_CALL = 6
+hold N_HOLD = 7
+hold N_WHEN = 8
+hold N_LOOP = 9
+hold N_GIVE = 10
+hold N_EXPR = 11
+hold N_FOLD = 12
+
+// ---- global interpreter state ----
+hold P_toks = []       // token stream (parser)
+hold P_pos = 0         // cursor into P_toks
+hold G_names = []      // global variable names  (evaluator)
+hold G_vals = []       // global variable values
+hold F_names = []      // function names
+hold F_params = []     // function parameter lists
+hold F_bodies = []     // function bodies (statement arrays)
+
+// ---------------------------------------------------------------------------
+//  Character helpers
+// ---------------------------------------------------------------------------
+fold is_digit(c) {
+    hold k = ord(c)
+    give k >= 48 && k <= 57
+}
+
+fold is_alpha(c) {
+    hold k = ord(c)
+    give (k >= 65 && k <= 90) || (k >= 97 && k <= 122) || c == "_"
+}
+
+fold is_ident(c) {
+    give is_alpha(c) || is_digit(c)
+}
+
+fold is_space(c) {
+    give c == " " || c == chr(9) || c == chr(10) || c == chr(13)
+}
+
+// ---------------------------------------------------------------------------
+//  Tokenizer
+// ---------------------------------------------------------------------------
+fold tokenize(src) {
+    hold toks = []
+    hold n = len(src)
+    hold i = 0
+    loop i < n {
+        hold c = char_at(src, i)
+        when is_space(c) {
+            i = i + 1
+        } else when c == "/" && char_at(src, i + 1) == "/" {
+            loop i < n && char_at(src, i) != chr(10) {
+                i = i + 1
+            }
+        } else when is_digit(c) {
+            hold s0 = i
+            loop i < n && is_digit(char_at(src, i)) {
+                i = i + 1
+            }
+            when i < n && char_at(src, i) == "." {
+                i = i + 1
+                loop i < n && is_digit(char_at(src, i)) {
+                    i = i + 1
+                }
+            }
+            hold numtext = substr(src, s0, i - s0)
+            push(toks, [TK_NUM, numtext, num(numtext)])
+        } else when is_alpha(c) {
+            hold s1 = i
+            loop i < n && is_ident(char_at(src, i)) {
+                i = i + 1
+            }
+            push(toks, [TK_IDENT, substr(src, s1, i - s1), 0])
+        } else when c == "\"" {
+            i = i + 1
+            hold s2 = i
+            loop i < n && char_at(src, i) != "\"" {
+                i = i + 1
+            }
+            hold strtext = substr(src, s2, i - s2)
+            i = i + 1
+            push(toks, [TK_STR, strtext, 0])
+        } else {
+            hold two = substr(src, i, 2)
+            when two == "==" || two == "!=" || two == "<=" || two == ">=" {
+                push(toks, [TK_SYM, two, 0])
+                i = i + 2
+            } else {
+                push(toks, [TK_SYM, c, 0])
+                i = i + 1
+            }
+        }
+    }
+    push(toks, [TK_EOF, "", 0])
+    give toks
+}
+
+// ---------------------------------------------------------------------------
+//  Parser (recursive descent)
+// ---------------------------------------------------------------------------
+fold p_kind() { give P_toks[P_pos][0] }
+fold p_text() { give P_toks[P_pos][1] }
+fold p_num() { give P_toks[P_pos][2] }
+
+fold p_advance() {
+    hold t = P_toks[P_pos]
+    P_pos = P_pos + 1
+    give t
+}
+
+fold p_check_sym(s) {
+    give p_kind() == TK_SYM && p_text() == s
+}
+
+fold p_eat_sym(s) {
+    when p_check_sym(s) {
+        give p_advance()
+    }
+    say("parse error: expected '" + s + "' but found '" + p_text() + "'")
+    give p_advance()
+}
+
+fold parse(src) {
+    P_toks = tokenize(src)
+    P_pos = 0
+    give parse_program()
+}
+
+fold parse_program() {
+    hold stmts = []
+    loop p_kind() != TK_EOF {
+        push(stmts, parse_stmt())
+    }
+    give stmts
+}
+
+fold parse_block() {
+    p_eat_sym("{")
+    hold stmts = []
+    loop !p_check_sym("}") && p_kind() != TK_EOF {
+        push(stmts, parse_stmt())
+    }
+    p_eat_sym("}")
+    give stmts
+}
+
+fold parse_stmt() {
+    when p_kind() == TK_IDENT {
+        hold kw = p_text()
+        when kw == "hold" { give parse_hold() }
+        when kw == "fold" { give parse_fold() }
+        when kw == "when" { give parse_when() }
+        when kw == "loop" { give parse_loop() }
+        when kw == "give" { give parse_give() }
+    }
+    give [N_EXPR, parse_expr()]
+}
+
+fold parse_hold() {
+    p_advance()
+    hold name = p_advance()[1]
+    p_eat_sym("=")
+    give [N_HOLD, name, parse_expr()]
+}
+
+fold parse_fold() {
+    p_advance()
+    hold name = p_advance()[1]
+    p_eat_sym("(")
+    hold params = []
+    when !p_check_sym(")") {
+        push(params, p_advance()[1])
+        loop p_check_sym(",") {
+            p_advance()
+            push(params, p_advance()[1])
+        }
+    }
+    p_eat_sym(")")
+    give [N_FOLD, name, params, parse_block()]
+}
+
+fold parse_when() {
+    p_advance()
+    hold cond = parse_expr()
+    hold thenb = parse_block()
+    hold elseb = none
+    when p_kind() == TK_IDENT && p_text() == "else" {
+        p_advance()
+        when p_kind() == TK_IDENT && p_text() == "when" {
+            elseb = [parse_when()]
+        } else {
+            elseb = parse_block()
+        }
+    }
+    give [N_WHEN, cond, thenb, elseb]
+}
+
+fold parse_loop() {
+    p_advance()
+    hold cond = parse_expr()
+    give [N_LOOP, cond, parse_block()]
+}
+
+fold parse_give() {
+    p_advance()
+    hold val = none
+    when p_kind() != TK_EOF && !p_check_sym("}") {
+        val = parse_expr()
+    }
+    give [N_GIVE, val]
+}
+
+fold parse_expr() { give parse_assign() }
+
+fold parse_assign() {
+    hold left = parse_equality()
+    when p_check_sym("=") {
+        p_advance()
+        give [N_ASSIGN, left[1], parse_assign()]
+    }
+    give left
+}
+
+fold parse_equality() {
+    hold e = parse_comparison()
+    loop p_check_sym("==") || p_check_sym("!=") {
+        hold op = p_advance()[1]
+        e = [N_BIN, op, e, parse_comparison()]
+    }
+    give e
+}
+
+fold parse_comparison() {
+    hold e = parse_term()
+    loop p_check_sym("<") || p_check_sym(">") || p_check_sym("<=") || p_check_sym(">=") {
+        hold op = p_advance()[1]
+        e = [N_BIN, op, e, parse_term()]
+    }
+    give e
+}
+
+fold parse_term() {
+    hold e = parse_factor()
+    loop p_check_sym("+") || p_check_sym("-") {
+        hold op = p_advance()[1]
+        e = [N_BIN, op, e, parse_factor()]
+    }
+    give e
+}
+
+fold parse_factor() {
+    hold e = parse_unary()
+    loop p_check_sym("*") || p_check_sym("/") || p_check_sym("%") {
+        hold op = p_advance()[1]
+        e = [N_BIN, op, e, parse_unary()]
+    }
+    give e
+}
+
+fold parse_unary() {
+    when p_check_sym("-") || p_check_sym("!") {
+        hold op = p_advance()[1]
+        give [N_UNARY, op, parse_unary()]
+    }
+    give parse_call()
+}
+
+fold parse_call() {
+    hold e = parse_primary()
+    loop p_check_sym("(") {
+        p_advance()
+        hold args = []
+        when !p_check_sym(")") {
+            push(args, parse_expr())
+            loop p_check_sym(",") {
+                p_advance()
+                push(args, parse_expr())
+            }
+        }
+        p_eat_sym(")")
+        e = [N_CALL, e[1], args]
+    }
+    give e
+}
+
+fold parse_primary() {
+    when p_kind() == TK_NUM {
+        hold v = p_num()
+        p_advance()
+        give [N_NUM, v]
+    }
+    when p_kind() == TK_STR {
+        hold s = p_text()
+        p_advance()
+        give [N_STR, s]
+    }
+    when p_kind() == TK_IDENT {
+        hold nm = p_text()
+        p_advance()
+        give [N_VAR, nm]
+    }
+    when p_check_sym("(") {
+        p_advance()
+        hold inner = parse_expr()
+        p_eat_sym(")")
+        give inner
+    }
+    say("parse error: unexpected token '" + p_text() + "'")
+    p_advance()
+    give [N_NUM, 0]
+}
+
+// ---------------------------------------------------------------------------
+//  Evaluator (tree-walking)
+//
+//  Interpreted values are native Ori numbers and strings. An environment is a
+//  two-element array [names, values]. Functions are kept in the F_* tables.
+//  A statement returns a "signal" [flag, value]: flag 1 means a give happened.
+// ---------------------------------------------------------------------------
+fold find_name(names, name) {
+    hold i = 0
+    loop i < len(names) {
+        when names[i] == name { give i }
+        i = i + 1
+    }
+    give 0 - 1
+}
+
+fold declare(env, name, val) {
+    push(env[0], name)
+    push(env[1], val)
+}
+
+fold get_var(env, name) {
+    hold li = find_name(env[0], name)
+    when li >= 0 { give env[1][li] }
+    hold gi = find_name(G_names, name)
+    when gi >= 0 { give G_vals[gi] }
+    say("runtime error: undefined variable '" + name + "'")
+    give 0
+}
+
+fold set_var(env, name, val) {
+    hold li = find_name(env[0], name)
+    when li >= 0 {
+        env[1][li] = val
+        give 0
+    }
+    hold gi = find_name(G_names, name)
+    when gi >= 0 {
+        G_vals[gi] = val
+        give 0
+    }
+    say("runtime error: assign to undeclared '" + name + "'")
+    give 0
+}
+
+fold truthy(v) {
+    when type(v) == "number" { give v != 0 }
+    when type(v) == "string" { give len(v) > 0 }
+    give no
+}
+
+fold bool_not(v) {
+    when truthy(v) { give 0 }
+    give 1
+}
+
+fold to_str(v) { give "" + v }
+
+fold bnum(b) {
+    when b { give 1 }
+    give 0
+}
+
+fold eval_bin(op, a, b) {
+    when op == "+" { give a + b }
+    when op == "-" { give a - b }
+    when op == "*" { give a * b }
+    when op == "/" { give a / b }
+    when op == "%" { give a % b }
+    when op == "==" { give bnum(a == b) }
+    when op == "!=" { give bnum(a != b) }
+    when op == "<" { give bnum(a < b) }
+    when op == ">" { give bnum(a > b) }
+    when op == "<=" { give bnum(a <= b) }
+    when op == ">=" { give bnum(a >= b) }
+    say("runtime error: bad operator '" + op + "'")
+    give 0
+}
+
+fold eval(node, env) {
+    hold nt = node[0]
+    when nt == N_NUM { give node[1] }
+    when nt == N_STR { give node[1] }
+    when nt == N_VAR { give get_var(env, node[1]) }
+    when nt == N_ASSIGN {
+        hold v = eval(node[2], env)
+        set_var(env, node[1], v)
+        give v
+    }
+    when nt == N_UNARY {
+        hold uv = eval(node[2], env)
+        when node[1] == "-" { give 0 - uv }
+        give bool_not(uv)
+    }
+    when nt == N_BIN {
+        give eval_bin(node[1], eval(node[2], env), eval(node[3], env))
+    }
+    when nt == N_CALL {
+        hold args = []
+        hold k = 0
+        loop k < len(node[2]) {
+            push(args, eval(node[2][k], env))
+            k = k + 1
+        }
+        give call_function(node[1], args)
+    }
+    give 0
+}
+
+fold call_builtin(name, argvals) {
+    when name == "say" {
+        hold out = ""
+        hold k = 0
+        loop k < len(argvals) {
+            when k > 0 { out = out + " " }
+            out = out + to_str(argvals[k])
+            k = k + 1
+        }
+        say(out)
+        give 0
+    }
+    when name == "str" { give to_str(argvals[0]) }
+    say("runtime error: unknown function '" + name + "'")
+    give 0
+}
+
+fold call_function(name, argvals) {
+    hold fi = find_name(F_names, name)
+    when fi >= 0 {
+        hold params = F_params[fi]
+        hold body = F_bodies[fi]
+        hold local = [[], []]
+        hold k = 0
+        loop k < len(params) {
+            push(local[0], params[k])
+            push(local[1], argvals[k])
+            k = k + 1
+        }
+        hold sig = exec_block(body, local)
+        give sig[1]
+    }
+    give call_builtin(name, argvals)
+}
+
+fold exec_block(stmts, env) {
+    hold k = 0
+    loop k < len(stmts) {
+        hold sig = exec_stmt(stmts[k], env)
+        when sig[0] == 1 { give sig }
+        k = k + 1
+    }
+    give [0, none]
+}
+
+fold exec_stmt(node, env) {
+    hold nt = node[0]
+    when nt == N_HOLD {
+        declare(env, node[1], eval(node[2], env))
+        give [0, none]
+    }
+    when nt == N_EXPR {
+        eval(node[1], env)
+        give [0, none]
+    }
+    when nt == N_GIVE {
+        hold rv = none
+        when node[1] != none {
+            rv = eval(node[1], env)
+        }
+        give [1, rv]
+    }
+    when nt == N_WHEN {
+        when truthy(eval(node[1], env)) {
+            give exec_block(node[2], env)
+        }
+        when node[3] != none {
+            give exec_block(node[3], env)
+        }
+        give [0, none]
+    }
+    when nt == N_LOOP {
+        loop truthy(eval(node[1], env)) {
+            hold sig = exec_block(node[2], env)
+            when sig[0] == 1 { give sig }
+        }
+        give [0, none]
+    }
+    give [0, none]
+}
+
+fold run_program(src) {
+    hold prog = parse(src)
+    // hoist function declarations
+    hold i = 0
+    loop i < len(prog) {
+        hold st = prog[i]
+        when st[0] == N_FOLD {
+            push(F_names, st[1])
+            push(F_params, st[2])
+            push(F_bodies, st[3])
+        }
+        i = i + 1
+    }
+    // run top-level statements in the global environment
+    hold genv = [G_names, G_vals]
+    i = 0
+    loop i < len(prog) {
+        hold st2 = prog[i]
+        when st2[0] != N_FOLD {
+            exec_stmt(st2, genv)
+        }
+        i = i + 1
+    }
+}
+
+fold join_lines(lines) {
+    hold s = ""
+    hold i = 0
+    loop i < len(lines) {
+        s = s + lines[i] + chr(10)
+        i = i + 1
+    }
+    give s
+}
+
+// ---------------------------------------------------------------------------
+//  Main: build a small Ori program as text, then interpret it with the above.
+// ---------------------------------------------------------------------------
+hold lines = [
+    "fold fib(n) {",
+    "    when n < 2 { give n }",
+    "    give fib(n - 1) + fib(n - 2)",
+    "}",
+    "fold greet(name) {",
+    "    give \"Hello, \" + name + \"!\"",
+    "}",
+    "say(greet(\"Ori\"))",
+    "hold i = 0",
+    "loop i < 11 {",
+    "    say(\"fib(\" + str(i) + \") = \" + str(fib(i)))",
+    "    i = i + 1",
+    "}"
+]
+
+hold program = join_lines(lines)
+
+say("================ Ori running Ori ================")
+say("The program below is interpreted by an Ori program:")
+say("------------------------------------------------")
+say(program)
+say("---------------- interpreter output ------------")
+run_program(program)
+say("================================================")

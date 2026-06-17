@@ -42,6 +42,10 @@ public enum OpCode : byte
 
     Call = 26,        // arg = argument count
     Ret = 27,         // returns top of stack (or nil)
+
+    MakeArray = 28,   // arg = element count; pops them, pushes a new array
+    Index = 29,       // pops index, container; pushes element (array) or 1-char string
+    StoreIndex = 30,  // pops value, index, container; sets container[index]; pushes value
 }
 
 public struct Instr
@@ -59,7 +63,7 @@ public struct Instr
         OpCode.PushConst or OpCode.LoadGlobal or OpCode.StoreGlobal
             or OpCode.LoadLocal or OpCode.StoreLocal
             or OpCode.Jmp or OpCode.JmpIfFalse or OpCode.JmpIfTrue
-            or OpCode.Call => true,
+            or OpCode.Call or OpCode.MakeArray => true,
         _ => false
     };
 }

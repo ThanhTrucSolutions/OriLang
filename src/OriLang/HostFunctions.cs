@@ -49,9 +49,61 @@ public sealed class HostRegistry
 
         r.Register("len", args =>
         {
-            if (args.Length == 0 || args[0].Type != ValueType.Str)
-                throw new OriRuntimeError("len() expects a string");
-            return Value.Number(args[0].AsStr.Length);
+            if (args.Length == 0) throw new OriRuntimeError("len() expects an argument");
+            return args[0].Type switch
+            {
+                ValueType.Str => Value.Number(args[0].AsStr.Length),
+                ValueType.Array => Value.Number(args[0].AsArray.Count),
+                _ => throw new OriRuntimeError("len() expects a string or array")
+            };
+        });
+
+        // ---- arrays ----
+        r.Register("push", args =>
+        {
+            if (args.Length < 2 || args[0].Type != ValueType.Array)
+                throw new OriRuntimeError("push(array, value) expects an array");
+            args[0].AsArray.Add(args[1]);
+            return Value.Number(args[0].AsArray.Count);
+        });
+
+        r.Register("pop", args =>
+        {
+            if (args.Length == 0 || args[0].Type != ValueType.Array)
+                throw new OriRuntimeError("pop(array) expects an array");
+            var list = args[0].AsArray;
+            if (list.Count == 0) throw new OriRuntimeError("pop() on empty array");
+            var v = list[^1];
+            list.RemoveAt(list.Count - 1);
+            return v;
+        });
+
+        // ---- string <-> char helpers (needed to write a tokenizer in Ori) ----
+        r.Register("char_at", args =>
+        {
+            string s = Str(args, 0, "char_at");
+            int i = (int)Num(args, 1, "char_at");
+            return (i < 0 || i >= s.Length) ? Value.Str("") : Value.Str(s[i].ToString());
+        });
+
+        r.Register("ord", args =>
+        {
+            string s = Str(args, 0, "ord");
+            return Value.Number(s.Length == 0 ? -1 : s[0]);
+        });
+
+        r.Register("chr", args => Value.Str(((char)(int)Num(args, 0, "chr")).ToString()));
+
+        r.Register("substr", args =>
+        {
+            string s = Str(args, 0, "substr");
+            int start = (int)Num(args, 1, "substr");
+            int count = args.Length > 2 ? (int)Num(args, 2, "substr") : s.Length - start;
+            if (start < 0) start = 0;
+            if (start > s.Length) start = s.Length;
+            if (count < 0) count = 0;
+            if (start + count > s.Length) count = s.Length - start;
+            return Value.Str(s.Substring(start, count));
         });
 
         r.Register("num", args =>
@@ -99,6 +151,7 @@ public sealed class HostRegistry
                 ValueType.Str => "string",
                 ValueType.Function => "function",
                 ValueType.Host => "function",
+                ValueType.Array => "array",
                 _ => "?"
             });
         });

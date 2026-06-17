@@ -13,7 +13,7 @@ public enum TokType
     Plus, Minus, Star, Slash, Percent,
     Assign, EqEq, BangEq, Lt, Gt, Le, Ge,
     AmpAmp, PipePipe, Bang,
-    LParen, RParen, LBrace, RBrace, Comma,
+    LParen, RParen, LBrace, RBrace, LBracket, RBracket, Comma,
     // structure
     Newline, Eof
 }
@@ -220,6 +220,8 @@ public sealed class Lexer
             case ')': return One(TokType.RParen, ")");
             case '{': return One(TokType.LBrace, "{");
             case '}': return One(TokType.RBrace, "}");
+            case '[': return One(TokType.LBracket, "[");
+            case ']': return One(TokType.RBracket, "]");
             case ',': return One(TokType.Comma, ",");
             case '=': return n == '=' ? Two(TokType.EqEq, "==") : One(TokType.Assign, "=");
             case '!': return n == '=' ? Two(TokType.BangEq, "!=") : One(TokType.Bang, "!");

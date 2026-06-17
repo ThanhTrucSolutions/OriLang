@@ -9,7 +9,8 @@ public enum ValueType : byte
     Bool = 2,
     Str = 3,
     Function = 4, // _num = function index
-    Host = 5      // _num = host id
+    Host = 5,     // _num = host id
+    Array = 6     // _obj = List<Value> (reference type)
 }
 
 /// <summary>
@@ -33,11 +34,13 @@ public readonly struct Value
     public static Value Str(string s) => new(ValueType.Str, 0, s ?? "");
     public static Value Function(int index) => new(ValueType.Function, index, null);
     public static Value Host(int id) => new(ValueType.Host, id, null);
+    public static Value Array(List<Value> items) => new(ValueType.Array, 0, items);
 
     public double AsNumber => _num;
     public bool AsBool => _num != 0;
     public string AsStr => (string)_obj;
     public int AsIndex => (int)_num;
+    public List<Value> AsArray => (List<Value>)_obj;
 
     public bool IsTruthy => Type switch
     {
@@ -55,6 +58,7 @@ public readonly struct Value
         {
             ValueType.Nil => true,
             ValueType.Str => (string)_obj == (string)other._obj,
+            ValueType.Array => ReferenceEquals(_obj, other._obj),
             _ => _num == other._num
         };
     }
@@ -68,6 +72,9 @@ public readonly struct Value
             case ValueType.Str: return (string)_obj;
             case ValueType.Function: return $"<fn#{(int)_num}>";
             case ValueType.Host: return $"<host#{(int)_num}>";
+            case ValueType.Array:
+                return "[" + string.Join(", ", ((List<Value>)_obj).Select(v =>
+                    v.Type == ValueType.Str ? "\"" + v.AsStr + "\"" : v.Display())) + "]";
             case ValueType.Number:
                 // Integer-valued doubles print without a trailing ".0".
                 if (_num == Math.Floor(_num) && !double.IsInfinity(_num))
