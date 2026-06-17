@@ -404,18 +404,55 @@ the demo registers `get_clicks()` and `ui_set_text(s)`.
 
 ---
 
-## 8. Project layout
+## 8. Running on Android (OriDroid)
+
+[src/OriDroid](src/OriDroid) is a **.NET for Android** app that embeds the same
+`OriLang` core. It shows one button; each tap decrypts an embedded `program.orx`
+and runs it on the Ori VM **on the device**, computing `fib(tapCount)` and
+updating the UI through the `ui_set_text` host function. The VM, the bytecode,
+and the encrypted-image format are identical to the desktop tools — only the UI
+layer differs.
+
+Prerequisites (one-time):
+
+```powershell
+dotnet workload install android      # .NET Android workload
+# plus the Android SDK + a JDK 17 (e.g. from Android Studio)
+```
+
+Build the APK:
+
+```powershell
+dotnet build src/OriDroid/OriDroid.csproj -c Release
+# -> src/OriDroid/bin/Release/net9.0-android/com.thanhtruc.oridroid-Signed.apk
+```
+
+Install & run on a device/emulator:
+
+```powershell
+adb install -r src/OriDroid/bin/Release/net9.0-android/com.thanhtruc.oridroid-Signed.apk
+adb shell monkey -p com.thanhtruc.oridroid -c android.intent.category.LAUNCHER 1
+# or simply:  dotnet build src/OriDroid/OriDroid.csproj -c Release -t:Install
+```
+
+Each tap logs a line like `[Ori VM] You tapped 5 times | fib(5) = 5`, proving the
+encrypted Ori image is decrypted and executed on Android.
+
+---
+
+## 9. Project layout
 
 | Folder | Role |
 |---|---|
 | `src/OriLang` | Core: lexer, parser, compiler, VM, encrypted container |
 | `src/oric`    | The `oric` CLI |
 | `src/OriDemo` | Windows (WinForms) app with one button |
+| `src/OriDroid` | Android (.NET for Android) app with one button |
 | `examples`    | `.ori` examples, incl. the self-hosted interpreter |
 
 ---
 
-## 9. Current limitations
+## 10. Current limitations
 
 - Types: number, string, bool, none, function, array (no hash maps/objects yet).
 - No closures / nested functions / block-scoped locals.
