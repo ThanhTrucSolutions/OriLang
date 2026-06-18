@@ -217,6 +217,7 @@ static Program* deserialize(const uint8_t* data, size_t n, const uint8_t* invPer
     Cur c={data,n,0};
     Program* pr=xmalloc(sizeof(Program));
     pr->constCount=rd_i32(&c);
+    if(pr->constCount<0||pr->constCount>65535) die("malformed bytecode: constCount out of range");
     pr->consts=xmalloc(sizeof(Value)*(pr->constCount>0?pr->constCount:1));
     for(int i=0;i<pr->constCount;i++){
         uint8_t t=rd_u8(&c);
@@ -230,6 +231,7 @@ static Program* deserialize(const uint8_t* data, size_t n, const uint8_t* invPer
     }
     pr->mainIndex=rd_i32(&c);
     pr->funcCount=rd_i32(&c);
+    if(pr->funcCount<0||pr->funcCount>16383) die("malformed bytecode: funcCount out of range");
     pr->funcs=xmalloc(sizeof(Func)*(pr->funcCount>0?pr->funcCount:1));
     uint32_t white=whitenSeed;
     for(int i=0;i<pr->funcCount;i++){
@@ -237,7 +239,9 @@ static Program* deserialize(const uint8_t* data, size_t n, const uint8_t* invPer
         f->name=rd_str(&c,NULL);
         f->arity=rd_i32(&c);
         f->localCount=rd_i32(&c);
+        if(f->localCount<0||f->localCount>4095) die("malformed bytecode: localCount out of range");
         f->codeCount=rd_i32(&c);
+        if(f->codeCount<0||f->codeCount>1048575) die("malformed bytecode: codeCount out of range");
         f->code=xmalloc(sizeof(Instr)*(f->codeCount>0?f->codeCount:1));
         for(int j=0;j<f->codeCount;j++){
             uint8_t raw=rd_u8(&c);
@@ -284,7 +288,7 @@ static Program* load_orb(const uint8_t* img, size_t n){
 // ---- serialize a Program back to a plaintext payload (opcodes permuted, operands whitened) ----
 typedef struct { uint8_t* d; size_t len, cap; } Buf;
 static void buf_init(Buf* b){ b->cap=256; b->len=0; b->d=xmalloc(b->cap); }
-static void buf_u8(Buf* b, uint8_t v){ if(b->len+1>b->cap){ b->cap*=2; b->d=realloc(b->d,b->cap);} b->d[b->len++]=v; }
+static void buf_u8(Buf* b, uint8_t v){ if(b->len+1>b->cap){ b->cap*=2; b->d=xrealloc(b->d,b->cap);} b->d[b->len++]=v; }
 static void buf_i32(Buf* b, int32_t v){ uint32_t u=(uint32_t)v; buf_u8(b,(uint8_t)u);buf_u8(b,(uint8_t)(u>>8));buf_u8(b,(uint8_t)(u>>16));buf_u8(b,(uint8_t)(u>>24)); }
 static void buf_double(Buf* b, double d){ uint64_t u; memcpy(&u,&d,8); for(int i=0;i<8;i++) buf_u8(b,(uint8_t)(u>>(8*i))); }
 static void buf_str(Buf* b, const char* s, int len){ buf_i32(b,len); for(int i=0;i<len;i++) buf_u8(b,(uint8_t)s[i]); }
@@ -453,7 +457,7 @@ static Value run(VM* vm){
         Frame* fr=&vm->frames[vm->fp-1];
         Func* fn=fr->fn;
         for(;;){
-            if(fr->ip>=fn->codeCount){ vm->fp--; break; }
+            if(fr->ip>=fn->codeCount){ free(fr->locals); vm->fp--; break; }
             Instr ins=fn->code[fr->ip++];
             switch(ins.op){
                 case OP_HALT: return vm->sp>0?pop(vm):vnil();
@@ -500,6 +504,7 @@ static Value run(VM* vm){
                 case OP_RET: {
                     Value res=vm->sp>0?pop(vm):vnil();
                     vm->fp--;
+                    free(vm->frames[vm->fp].locals);
                     if(vm->fp==0) return res;
                     push(vm,res);
                     goto refetch;
@@ -590,7 +595,8 @@ static Value h_read_file(VM* vm, Value* a, int argc){
     Str* path=argstr(a,argc,0);
     FILE* f=fopen(path->d,"rb"); if(!f){ rt_error("read_file: cannot open file"); }
     fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
-    char* buf=xmalloc(n+1); size_t got=fread(buf,1,n,f); (void)got; buf[n]=0; fclose(f);
+    if(n<0||n>64*1024*1024){ fclose(f); rt_error("read_file: file unseekable or too large"); }
+    char* buf=xmalloc((size_t)n+1); size_t got=fread(buf,1,(size_t)n,f); (void)got; buf[n]=0; fclose(f);
     Value v=vstr_n(buf,(int)n); free(buf); return v;
 }
 static Value h_write_bytes(VM* vm, Value* a, int argc){
@@ -792,7 +798,9 @@ static Value h_read_bytes_b64(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vstr("");
     FILE* f=fopen(a[0].u.s->d,"rb"); if(!f) return vstr("");
     fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
-    unsigned char* data=(unsigned char*)xmalloc(n>0?n:1);
+    if(n<0||n>64*1024*1024){ fclose(f); return vstr(""); }
+    if(n==0){ fclose(f); return vstr(""); }
+    unsigned char* data=(unsigned char*)xmalloc((size_t)n);
     size_t got=fread(data,1,(size_t)n,f); fclose(f); (void)got;
     static const char T[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     size_t outLen=((n+2)/3)*4;
@@ -837,7 +845,8 @@ static void register_hosts(VM* vm){
 static uint8_t* read_all(const char* path, size_t* outN){
     FILE* f=fopen(path,"rb"); if(!f){ fprintf(stderr,"cannot open %s\n",path); exit(2); }
     fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
-    uint8_t* b=xmalloc(n>0?n:1); size_t got=fread(b,1,n,f); (void)got; fclose(f); *outN=(size_t)n; return b;
+    if(n<0){ fprintf(stderr,"cannot seek %s\n",path); exit(2); }
+    uint8_t* b=xmalloc(n>0?(size_t)n:1); size_t got=fread(b,1,(size_t)n,f); (void)got; fclose(f); *outN=(size_t)n; return b;
 }
 
 static const char* OPNAME[]={
