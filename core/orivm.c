@@ -574,7 +574,7 @@ static Value h_chr(VM* vm, Value* a, int argc){ char c=(char)(int)argnum(a,argc,
 static Value h_substr(VM* vm, Value* a, int argc){
     Str* s=argstr(a,argc,0); int start=(int)argnum(a,argc,1);
     int count=argc>2?(int)argnum(a,argc,2):s->len-start;
-    if(start<0)start=0; if(start>s->len)start=s->len; if(count<0)count=0; if(start+count>s->len)count=s->len-start;
+    if(start<0)start=0; if(start>s->len)start=s->len; if(count<0)count=0; if(count>s->len-start)count=s->len-start;
     return vstr_n(s->d+start,count);
 }
 static Value h_type(VM* vm, Value* a, int argc){
