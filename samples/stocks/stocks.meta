@@ -1,0 +1,23 @@
+name: stocks
+version: 1.0.0
+entry: ori/main.ori
+platform: windows
+
+# Ori Stocks — real-time watchlist powered by Yahoo Finance (free, no API key).
+#
+# The render/dispatch UI model means this same Ori source runs everywhere:
+#   ori build stocks wechat-mini-program   → WeChat Mini Program
+#   ori build stocks alipay-mini-program   → Alipay Mini Program
+#   ori build stocks telegram-mini-app     → Telegram Mini App
+#   ori build stocks zalo-mini-app         → Zalo Mini App
+#   ori build stocks line-mini-app         → LINE Mini App
+#   ori build stocks grab-mini-app         → Grab Mini App
+#   ori build stocks momo-mini-app         → Momo Mini App
+#   ori build stocks chrome-extension      → Chrome Extension
+#   ori build stocks web                   → Web (WASM)
+#   ori build stocks windows               → Windows console
+#   ori build stocks linux                 → Linux bundle
+#   ori build stocks android               → Android APK
+#
+# Or build for ALL platforms at once:
+#   ori export samples/stocks

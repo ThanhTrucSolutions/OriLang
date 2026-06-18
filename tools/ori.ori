@@ -572,6 +572,36 @@ fold write_chrome_popup out_dir m_name {
     give 0
 }
 
+// build_mini_orb: like build_mini but uses a pre-compiled orb (skip recompile).
+fold build_mini_orb orb platform out_base m_name {
+    hold out_dir = to_native_sep(jp(out_base, platform))
+    ensure_dir(out_dir)
+    hold rc = copy_mini_shared(out_dir, orb)
+    when rc != 0 { give rc }
+    when platform == "wechat-mini-program" {
+        hold files = ["app.js", "app.json", "app.wxss", "project.config.json",
+                      "pages/index/index.js", "pages/index/index.json",
+                      "pages/index/index.wxml", "pages/index/index.wxss"]
+        rc = copy_mini_template(out_dir, "wechat", files)
+    } else when platform == "alipay-mini-program" {
+        hold files = ["app.js", "app.json", "app.acss", "mini.project.json",
+                      "pages/index/index.js", "pages/index/index.json",
+                      "pages/index/index.axml", "pages/index/index.acss"]
+        rc = copy_mini_template(out_dir, "alipay", files)
+    } else when is_web_shell(platform) {
+        hold files = ["app.css", "app.js"]
+        rc = copy_mini_template(out_dir, "web-shell", files)
+        when rc == 0 { rc = write_web_shell_index(out_dir, platform, m_name) }
+    } else when platform == "chrome-extension" {
+        hold files = ["app.css", "app.js"]
+        rc = copy_mini_template(out_dir, "web-shell", files)
+        when rc == 0 { rc = write_chrome_popup(out_dir, m_name) }
+    }
+    when rc != 0 { give rc }
+    say("  ok    " + platform)
+    give 0
+}
+
 fold build_mini proj m {
     hold orb = compile_orb(proj, m[2], m[0])
     when orb == "" {
@@ -611,6 +641,124 @@ fold build_mini proj m {
     give 0
 }
 
+// ===== EXPORT (build for every platform at once) =====
+fold cmd_export proj {
+    hold m = read_meta(proj)
+    when m == none { give 1 }
+    say("ori: exporting '" + m[0] + "' for all platforms  (build/ subfolder per platform)")
+    say("")
+
+    // Compile once — all platforms share the same .orb
+    hold orb = compile_orb(proj, m[2], m[0])
+    when orb == "" {
+        say("ori: compile failed — aborting export")
+        give 1
+    }
+    say("  compiled  " + orb)
+    say("")
+
+    hold build_dir = to_native_sep(jp(proj, "build"))
+
+    // ── Mini-apps & Chrome extension (no extra toolchain needed) ──────────────
+    hold mini_plats = [
+        "wechat-mini-program", "alipay-mini-program",
+        "telegram-mini-app",   "zalo-mini-app",
+        "line-mini-app",       "grab-mini-app",
+        "momo-mini-app",       "chrome-extension"
+    ]
+    hold i = 0
+    loop i < len(mini_plats) {
+        hold rc = build_mini_orb(orb, mini_plats[i], build_dir, m[0])
+        when rc != 0 { say("  ERROR " + mini_plats[i]) }
+        i = i + 1
+    }
+    say("")
+
+    // ── Web (needs tools/web/orivm.wasm) ──────────────────────────────────────
+    hold wasm = jp(TOOLS_WEB, "orivm.wasm")
+    when exists(wasm) {
+        hold out_dir = to_native_sep(jp(build_dir, "web"))
+        ensure_dir(out_dir)
+        copy(to_native_sep(jp(TOOLS_WEB, "orivm.js")),   to_native_sep(jp(out_dir, "orivm.js")))
+        copy(to_native_sep(jp(TOOLS_WEB, "orivm.wasm")), to_native_sep(jp(out_dir, "orivm.wasm")))
+        copy(to_native_sep(orb),                          to_native_sep(jp(out_dir, "app.orb")))
+        hold proj_index = to_native_sep(jp3(proj, "web", "index.html"))
+        hold dst_index  = to_native_sep(jp(out_dir, "index.html"))
+        when exists(proj_index) { copy(proj_index, dst_index) }
+        else {
+            hold tmpl = to_native_sep(jp3(PLATFORMS, "web", "index.html"))
+            when exists(tmpl) { copy(tmpl, dst_index) }
+        }
+        say("  ok    web")
+    } else {
+        say("  skip  web              (needs tools/web/orivm.wasm)")
+    }
+    say("")
+
+    // ── Windows (always available here) ──────────────────────────────────────
+    say("  ok    windows (console)  " + orb)
+    hold gui = jp3(PLATFORMS, "win", "oriwin.exe")
+    when exists(gui) {
+        say("  ok    windows (window)   " + gui)
+    } else {
+        say("  skip  windows (window)   (needs platforms/win/oriwin.exe)")
+    }
+    say("")
+
+    // ── Linux bundle (needs core/orivm Linux binary) ──────────────────────────
+    hold linux_vm = jp3(HOME, "core", "orivm")
+    when exists(linux_vm) {
+        hold out_dir = to_native_sep(jp3(build_dir, "linux", m[0]))
+        ensure_dir(out_dir)
+        copy(to_native_sep(orb),      to_native_sep(jp(out_dir, "app.orb")))
+        copy(to_native_sep(linux_vm), to_native_sep(jp(out_dir, "orivm")))
+        hold run_sh = to_native_sep(jp(out_dir, "run.sh"))
+        write_text(run_sh,
+"#!/usr/bin/env sh\n" +
+"DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n" +
+"exec \"$DIR/orivm\" \"$DIR/app.orb\" \"$@\"\n")
+        say("  ok    linux")
+    } else {
+        say("  skip  linux            (needs core/orivm — build on Linux with sh build.sh)")
+    }
+    say("")
+
+    // ── Android APK (needs Android NDK) ──────────────────────────────────────
+    hold apk_script = jp3(PLATFORMS, "android", "build-apk.cmd")
+    when exists(apk_script) {
+        hold apk = to_native_sep(jp(build_dir, m[0] + ".apk"))
+        hold rc  = run("cmd", ["/c", apk_script, orb, apk])
+        when rc == 0 { say("  ok    android -> " + apk) }
+        else { say("  skip  android          (NDK build failed — check platforms/android/)") }
+    } else {
+        say("  skip  android          (needs platforms/android/build-apk.cmd + NDK)")
+    }
+    say("")
+
+    // ── iOS & macOS (require macOS + Xcode) ───────────────────────────────────
+    when !IS_WIN {
+        hold ios_dir = to_native_sep(jp(build_dir, "ios"))
+        ensure_dir(ios_dir)
+        hold ios_out = to_native_sep(jp(ios_dir, m[0] + ".app"))
+        hold rc = run("sh", [jp3(PLATFORMS, "ios", "build-sim.sh"), orb, ios_out, m[0], "ori." + m[0], "--build-only"])
+        when rc == 0 { say("  ok    ios") }
+        else { say("  skip  ios              (needs Xcode)") }
+        hold mac_dir = to_native_sep(jp(build_dir, "macos"))
+        ensure_dir(mac_dir)
+        hold mac_out = to_native_sep(jp(mac_dir, m[0] + ".app"))
+        hold rc2 = run("sh", [jp3(PLATFORMS, "macos", "build-app.sh"), orb, mac_out, m[0]])
+        when rc2 == 0 { say("  ok    macos") }
+        else { say("  skip  macos            (needs Xcode)") }
+        say("")
+    } else {
+        say("  skip  ios / macos      (build on macOS)")
+        say("")
+    }
+
+    say("Export complete.  Artifacts in: " + to_native_sep(jp(proj, "build")))
+    give 0
+}
+
 // ===== USAGE =====
 fold usage {
     say("Ori toolchain  (C VM + self-hosted Ori compiler)")
@@ -621,6 +769,7 @@ fold usage {
     say("  ori run    [path]           compile + run")
     say("  ori dev    [path]           hot reload")
     say("  ori build  [path] [release] platform build / encrypted .orx")
+    say("  ori export [path]           build for ALL supported platforms at once")
     say("  ori doctor                  check toolchain")
     say("  ori version")
 }
@@ -634,7 +783,7 @@ when argc() > 1 { ORI_ARG  = argv(1) }
 when argc() > 2 { ORI_ARG2 = argv(2) }
 
 when ORI_CMD == "version" {
-    say("Ori toolchain 0.7  (C VM + Ori-written CLI)")
+    say("Ori toolchain 0.8  (C VM + Ori-written CLI)")
 } else when ORI_CMD == "doctor" {
     cmd_doctor()
 } else when ORI_CMD == "create" {
@@ -645,6 +794,9 @@ when ORI_CMD == "version" {
         when ORI_ARG2 != "" { plat = ORI_ARG2 }
         cmd_create(ORI_ARG, plat)
     }
+} else when ORI_CMD == "export" {
+    hold proj = abspath(to_native_sep(ORI_ARG))
+    cmd_export(proj)
 } else when ORI_CMD == "run" || ORI_CMD == "dev" || ORI_CMD == "build" {
     hold proj = abspath(to_native_sep(ORI_ARG))
     hold m    = read_meta(proj)
