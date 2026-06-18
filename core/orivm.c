@@ -56,7 +56,9 @@ enum {
 
 static void die(const char* msg){ fprintf(stderr, "%s\n", msg); exit(3); }
 static void* xmalloc(size_t n){ void* p=malloc(n); if(!p) die("out of memory"); return p; }
+static void* xrealloc(void* p, size_t n){ void* q=realloc(p,n); if(!q) die("out of memory"); return q; }
 static char* dupstr(const char* s){ size_t n=strlen(s)+1; char* d=xmalloc(n); memcpy(d,s,n); return d; }
+static void rt_error(const char* msg); /* fwd — defined after VM struct */
 
 // ---------------------------------------------------------------------------
 //  Values
@@ -84,7 +86,7 @@ static Value varr_new(){
     Value v; v.t=V_ARR; v.u.a=a; return v;
 }
 static void arr_push(Arr* a, Value v){
-    if(a->len>=a->cap){ a->cap*=2; a->it=realloc(a->it,sizeof(Value)*a->cap); }
+    if(a->len>=a->cap){ a->cap*=2; a->it=xrealloc(a->it,sizeof(Value)*a->cap); }
     a->it[a->len++]=v;
 }
 
@@ -110,11 +112,11 @@ static int val_eq(Value a, Value b){
 // ---- string builder ----
 typedef struct { char* d; int len, cap; } Sb;
 static void sb_init(Sb* b){ b->cap=64; b->len=0; b->d=xmalloc(b->cap); b->d[0]=0; }
-static void sb_putc(Sb* b, char c){ if(b->len+1>=b->cap){ b->cap*=2; b->d=realloc(b->d,b->cap);} b->d[b->len++]=c; b->d[b->len]=0; }
+static void sb_putc(Sb* b, char c){ if(b->len+1>=b->cap){ b->cap*=2; b->d=xrealloc(b->d,b->cap);} b->d[b->len++]=c; b->d[b->len]=0; }
 static void sb_put(Sb* b, const char* s, int n){ for(int i=0;i<n;i++) sb_putc(b,s[i]); }
 static void sb_puts(Sb* b, const char* s){ sb_put(b,s,(int)strlen(s)); }
 
-static void val_display(Sb* b, Value v){
+static void val_display_d(Sb* b, Value v, int depth){
     char tmp[64];
     switch(v.t){
         case V_NIL: sb_puts(b,"nil"); break;
@@ -129,17 +131,19 @@ static void val_display(Sb* b, Value v){
             sb_puts(b,tmp); break;
         }
         case V_ARR: {
+            if(depth>32){ sb_puts(b,"[...]"); break; }
             sb_putc(b,'[');
             for(int i=0;i<v.u.a->len;i++){
                 if(i) sb_puts(b,", ");
                 Value e=v.u.a->it[i];
                 if(e.t==V_STR){ sb_putc(b,'"'); sb_put(b,e.u.s->d,e.u.s->len); sb_putc(b,'"'); }
-                else val_display(b,e);
+                else val_display_d(b,e,depth+1);
             }
             sb_putc(b,']'); break;
         }
     }
 }
+static void val_display(Sb* b, Value v){ val_display_d(b,v,0); }
 static char* val_cstr(Value v){ Sb b; sb_init(&b); val_display(&b,v); return b.d; }
 
 // ---------------------------------------------------------------------------
@@ -373,7 +377,7 @@ static int do_pack(const char* inPath, const char* outPath){
 typedef struct VM VM;
 typedef Value (*HostFn)(VM* vm, Value* args, int argc);
 
-typedef struct { Func* fn; int ip; Value* locals; } Frame;
+typedef struct { Func* fn; int ip; Value* locals; int localsCount; } Frame;
 typedef struct { char* name; Value v; } GVar;
 
 struct VM {
@@ -389,7 +393,7 @@ static VM gvm;   // the persistent VM instance (kept alive for web event callbac
 
 static void g_set(VM* vm, const char* name, Value v){
     for(int i=0;i<vm->gcount;i++) if(strcmp(vm->globals[i].name,name)==0){ vm->globals[i].v=v; return; }
-    if(vm->gcount>=vm->gcap){ vm->gcap=vm->gcap?vm->gcap*2:32; vm->globals=realloc(vm->globals,sizeof(GVar)*vm->gcap); }
+    if(vm->gcount>=vm->gcap){ vm->gcap=vm->gcap?vm->gcap*2:32; vm->globals=xrealloc(vm->globals,sizeof(GVar)*vm->gcap); }
     vm->globals[vm->gcount].name=dupstr(name); vm->globals[vm->gcount].v=v; vm->gcount++;
 }
 static int g_get(VM* vm, const char* name, Value* out){
@@ -397,10 +401,10 @@ static int g_get(VM* vm, const char* name, Value* out){
     return 0;
 }
 static void push(VM* vm, Value v){
-    if(vm->sp>=vm->stackCap){ vm->stackCap*=2; vm->stack=realloc(vm->stack,sizeof(Value)*vm->stackCap); }
+    if(vm->sp>=vm->stackCap){ vm->stackCap*=2; vm->stack=xrealloc(vm->stack,sizeof(Value)*vm->stackCap); }
     vm->stack[vm->sp++]=v;
 }
-static Value pop(VM* vm){ return vm->stack[--vm->sp]; }
+static Value pop(VM* vm){ if(vm->sp<=0) rt_error("stack underflow"); return vm->stack[--vm->sp]; }
 
 static void rt_error(const char* msg){ fprintf(stderr,"[Ori runtime error] %s\n",msg); exit(4); }
 
@@ -412,12 +416,13 @@ static int check_index(Value idx, int count){
 }
 
 static void push_frame(VM* vm, int fnIndex, Value* args, int argc){
+    if(fnIndex<0||fnIndex>=vm->prog->funcCount) rt_error("invalid function index");
     Func* fn=&vm->prog->funcs[fnIndex];
     int n = fn->localCount>argc?fn->localCount:argc;
     Value* locals=xmalloc(sizeof(Value)*(n>0?n:1));
     for(int i=0;i<n;i++) locals[i]= i<argc?args[i]:vnil();
-    if(vm->fp>=vm->frameCap){ vm->frameCap*=2; vm->frames=realloc(vm->frames,sizeof(Frame)*vm->frameCap); }
-    vm->frames[vm->fp].fn=fn; vm->frames[vm->fp].ip=0; vm->frames[vm->fp].locals=locals; vm->fp++;
+    if(vm->fp>=vm->frameCap){ vm->frameCap*=2; vm->frames=xrealloc(vm->frames,sizeof(Frame)*vm->frameCap); }
+    vm->frames[vm->fp].fn=fn; vm->frames[vm->fp].ip=0; vm->frames[vm->fp].locals=locals; vm->frames[vm->fp].localsCount=n; vm->fp++;
 }
 
 static void do_call(VM* vm, int argc){
@@ -430,6 +435,7 @@ static void do_call(VM* vm, int argc){
         if(argc!=fn->arity){ char m[96]; snprintf(m,sizeof m,"%s() expects %d arg(s) but got %d",fn->name,fn->arity,argc); rt_error(m); }
         push_frame(vm,callee.u.i,args,argc);
     } else if(callee.t==V_HOST){
+        if(callee.u.i<0||callee.u.i>=vm->hostCount) rt_error("invalid host function index");
         push(vm, vm->hostFns[callee.u.i](vm,args,argc));
     } else rt_error("value is not callable");
     free(args);
@@ -451,20 +457,29 @@ static Value run(VM* vm){
             Instr ins=fn->code[fr->ip++];
             switch(ins.op){
                 case OP_HALT: return vm->sp>0?pop(vm):vnil();
-                case OP_PUSHCONST: push(vm, vm->prog->consts[ins.arg]); break;
+                case OP_PUSHCONST:
+                    if(ins.arg<0||ins.arg>=vm->prog->constCount) rt_error("const index out of range");
+                    push(vm, vm->prog->consts[ins.arg]); break;
                 case OP_PUSHINT: push(vm, vnum((double)ins.arg)); break;
                 case OP_PUSHNIL: push(vm, vnil()); break;
                 case OP_PUSHTRUE: push(vm, vbool(1)); break;
                 case OP_PUSHFALSE: push(vm, vbool(0)); break;
-                case OP_POP: vm->sp--; break;
+                case OP_POP: if(vm->sp<=0) rt_error("stack underflow"); vm->sp--; break;
                 case OP_LOADGLOBAL: {
+                    if(ins.arg<0||ins.arg>=vm->prog->constCount||vm->prog->consts[ins.arg].t!=V_STR) rt_error("bad LOADGLOBAL operand");
                     const char* nm=vm->prog->consts[ins.arg].u.s->d; Value v;
                     if(!g_get(vm,nm,&v)){ char m[128]; snprintf(m,sizeof m,"undefined variable '%s'",nm); rt_error(m); }
                     push(vm,v); break;
                 }
-                case OP_STOREGLOBAL: g_set(vm, vm->prog->consts[ins.arg].u.s->d, vm->stack[vm->sp-1]); vm->sp--; break;
-                case OP_LOADLOCAL: push(vm, fr->locals[ins.arg]); break;
-                case OP_STORELOCAL: fr->locals[ins.arg]=vm->stack[vm->sp-1]; vm->sp--; break;
+                case OP_STOREGLOBAL:
+                    if(ins.arg<0||ins.arg>=vm->prog->constCount||vm->prog->consts[ins.arg].t!=V_STR) rt_error("bad STOREGLOBAL operand");
+                    g_set(vm, vm->prog->consts[ins.arg].u.s->d, pop(vm)); break;
+                case OP_LOADLOCAL:
+                    if(ins.arg<0||ins.arg>=fr->localsCount) rt_error("local slot out of range");
+                    push(vm, fr->locals[ins.arg]); break;
+                case OP_STORELOCAL:
+                    if(ins.arg<0||ins.arg>=fr->localsCount) rt_error("local slot out of range");
+                    fr->locals[ins.arg]=pop(vm); break;
                 case OP_ADD: { Value b=pop(vm),a=pop(vm); push(vm,bin_add(a,b)); break; }
                 case OP_SUB: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a-b)); break; }
                 case OP_MUL: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a*b)); break; }
@@ -718,7 +733,7 @@ static int url_shell_safe(const char* url){
     for(const char* p=url;*p;p++){
         char c=*p;
         if(c=='\''||c=='"'||c=='`'||c=='$'||c=='\\'||c=='\n'||c=='\r'||
-           c==';'||c=='&'||c=='|'||c=='('||c==')'||c=='{'||c=='}'||c=='<'||c=='>')
+           c==';'||c=='|'||c=='('||c==')'||c=='{'||c=='}'||c=='<'||c=='>')
             return 0;
     }
     return 1;
