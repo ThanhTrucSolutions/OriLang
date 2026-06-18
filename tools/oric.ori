@@ -67,6 +67,7 @@ hold P_toks = []
 hold P_pos = 0
 hold C_kinds = []
 hold C_vals = []
+hold C_PARSE_DEPTH = 0
 hold F_names = []
 hold F_arity = []
 hold F_local = []
@@ -389,7 +390,13 @@ fold parse_give() {
     }
     give [N_GIVE, val]
 }
-fold parse_expr() { give parse_assign() }
+fold parse_expr() {
+    C_PARSE_DEPTH = C_PARSE_DEPTH + 1
+    when C_PARSE_DEPTH > 200 { print("oric: expression nested too deep (>200 levels)") }
+    hold r = parse_assign()
+    C_PARSE_DEPTH = C_PARSE_DEPTH - 1
+    give r
+}
 fold parse_assign() {
     hold left = parse_or()
     when p_check_sym("=") {
@@ -961,6 +968,7 @@ fold serialize() {
 //  Main
 // ---------------------------------------------------------------------------
 hold src = read_file(argv(0))
+when len(src) > 4000000 { print("oric: source file too large (>4MB)") }
 hold prog = parse(src)
 compile_program(prog)
 hold bytes = serialize()
