@@ -1,0 +1,232 @@
+// Todo REST API Server — written in pure Ori
+// Supports two backends:
+//   1. File store (default, no setup needed) — DB_MODE = "file"
+//   2. MySQL (compile orivm with -DORI_MYSQL) — DB_MODE = "mysql"
+//
+// Run: orivm server/main.orb [port]
+// Default port: 8081
+//
+// API:
+//   GET    /api/todos          list all
+//   GET    /api/todos/:id      get one
+//   POST   /api/todos          create  body: {"title":"..."}
+//   PUT    /api/todos/:id      update  body: {"title":"...","done":1}
+//   DELETE /api/todos/:id      delete
+//   GET    /health
+
+// ─── Config ──────────────────────────────────────────────────────────────────
+
+hold DB_MODE = "file"
+hold DATA_DIR = "data/todos"
+
+// MySQL config (used only when DB_MODE = "mysql")
+hold MYSQL_HOST = "localhost"
+hold MYSQL_PORT = 3306
+hold MYSQL_USER = "root"
+hold MYSQL_PASS = ""
+hold MYSQL_DB = "todo_ori"
+
+hold db_conn = 0
+
+// ─── ORM: File Store backend ─────────────────────────────────────────────────
+
+fold orm_init() {
+  when DB_MODE == "file" {
+    // data dir is auto-created by store_set on first write
+    give 1
+  }
+  when DB_MODE == "mysql" {
+    db_conn = db_connect(MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASS, MYSQL_DB)
+    when db_conn == 0 { give 0 }
+    db_exec(db_conn, "CREATE TABLE IF NOT EXISTS todos (id INT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(255) NOT NULL, done TINYINT DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
+    give 1
+  }
+  give 0
+}
+
+fold orm_all() {
+  when DB_MODE == "file" { give store_list(DATA_DIR) }
+  when DB_MODE == "mysql" { give db_query(db_conn, "SELECT * FROM todos ORDER BY id") }
+  give []
+}
+
+fold orm_get(id) {
+  when DB_MODE == "file" { give store_get(DATA_DIR, id) }
+  when DB_MODE == "mysql" {
+    hold safe_id = str(num(str(id)))
+    hold rows = db_query(db_conn, "SELECT * FROM todos WHERE id = " + safe_id)
+    when len(rows) == 0 { give "" }
+    give rows[0]
+  }
+  give ""
+}
+
+fold orm_create(title) {
+  when DB_MODE == "file" {
+    hold id = store_next_id(DATA_DIR)
+    hold json = "{\"id\":" + str(id) + ",\"title\":\"" + json_escape(title) + "\",\"done\":0}"
+    store_set(DATA_DIR, id, json)
+    give json
+  }
+  when DB_MODE == "mysql" {
+    hold safe_title = db_escape(db_conn, title)
+    db_exec(db_conn, "INSERT INTO todos (title) VALUES ('" + safe_title + "')")
+    hold id = db_last_id(db_conn)
+    give "{\"id\":" + str(id) + ",\"title\":\"" + json_escape(title) + "\",\"done\":0}"
+  }
+  give ""
+}
+
+fold orm_update(id, title, done) {
+  when DB_MODE == "file" {
+    hold existing = store_get(DATA_DIR, id)
+    when len(existing) == 0 { give "" }
+    hold use_title = title
+    when len(use_title) == 0 { use_title = json_get_str(existing, "title") }
+    hold json = "{\"id\":" + str(id) + ",\"title\":\"" + json_escape(use_title) + "\",\"done\":" + str(done) + "}"
+    store_set(DATA_DIR, id, json)
+    give json
+  }
+  when DB_MODE == "mysql" {
+    hold safe_id = str(num(str(id)))
+    when len(title) > 0 {
+      hold safe_title = db_escape(db_conn, title)
+      db_exec(db_conn, "UPDATE todos SET title='" + safe_title + "', done=" + str(done) + " WHERE id=" + safe_id)
+    } else {
+      db_exec(db_conn, "UPDATE todos SET done=" + str(done) + " WHERE id=" + safe_id)
+    }
+    give orm_get(id)
+  }
+  give ""
+}
+
+fold orm_delete(id) {
+  when DB_MODE == "file" { give store_delete(DATA_DIR, id) }
+  when DB_MODE == "mysql" {
+    hold safe_id = str(num(str(id)))
+    hold n = db_exec(db_conn, "DELETE FROM todos WHERE id=" + safe_id)
+    give n
+  }
+  give 0
+}
+
+// ─── JSON builder ────────────────────────────────────────────────────────────
+
+fold arr_to_json(arr) {
+  hold n = len(arr)
+  hold s = "["
+  hold i = 0
+  loop i < n {
+    when i > 0 { s = s + "," }
+    s = s + arr[i]
+    i = i + 1
+  }
+  give s + "]"
+}
+
+// ─── URL helpers ─────────────────────────────────────────────────────────────
+
+fold str_starts_with(s, prefix) {
+  hold plen = len(prefix)
+  when len(s) < plen { give 0 }
+  hold i = 0
+  hold ok = 1
+  loop i < plen {
+    when char_at(s, i) != char_at(prefix, i) { ok = 0  i = plen }
+    else { i = i + 1 }
+  }
+  give ok
+}
+
+// Extract :id segment from "GET /api/todos/42"
+fold extract_id(route, base) {
+  hold blen = len(base)
+  when len(route) <= blen { give "" }
+  give substr(route, blen, len(route) - blen)
+}
+
+// ─── Request body helpers ────────────────────────────────────────────────────
+
+fold parse_title(body) {
+  give json_get_str(body, "title")
+}
+
+fold parse_done(body) {
+  give json_get_num(body, "done")
+}
+
+// ─── Router ──────────────────────────────────────────────────────────────────
+
+fold router(route, body) {
+  when str_starts_with(route, "OPTIONS ") { give "" }
+  when str_starts_with(route, "GET /health") {
+    give "{\"status\":\"ok\",\"db\":\"" + DB_MODE + "\",\"lang\":\"Ori\"}"
+  }
+
+  // GET /api/todos/:id
+  when str_starts_with(route, "GET /api/todos/") {
+    hold id = extract_id(route, "GET /api/todos/")
+    hold rec = orm_get(id)
+    when len(rec) == 0 { give "{\"error\":\"not found\"}" }
+    give rec
+  }
+
+  // GET /api/todos
+  when str_starts_with(route, "GET /api/todos") {
+    hold items = orm_all()
+    give arr_to_json(items)
+  }
+
+  // POST /api/todos
+  when str_starts_with(route, "POST /api/todos") {
+    hold title = parse_title(body)
+    when len(title) == 0 { give "{\"error\":\"title is required\"}" }
+    when len(title) > 200 { give "{\"error\":\"title too long (max 200)\"}" }
+    give orm_create(title)
+  }
+
+  // PUT /api/todos/:id
+  when str_starts_with(route, "PUT /api/todos/") {
+    hold id = extract_id(route, "PUT /api/todos/")
+    hold title = parse_title(body)
+    hold done = parse_done(body)
+    hold result = orm_update(id, title, done)
+    when len(result) == 0 { give "{\"error\":\"not found\"}" }
+    give result
+  }
+
+  // DELETE /api/todos/:id
+  when str_starts_with(route, "DELETE /api/todos/") {
+    hold id = extract_id(route, "DELETE /api/todos/")
+    hold n = orm_delete(id)
+    when n == 0 { give "{\"error\":\"not found\"}" }
+    give "{\"deleted\":true,\"id\":" + str(id) + "}"
+  }
+
+  // Root
+  when route == "GET /" {
+    give "<!DOCTYPE html><html><head><title>Todo API</title></head><body><h1>Ori Todo API</h1><p>Endpoints: GET/POST /api/todos &nbsp; GET/PUT/DELETE /api/todos/:id</p></body></html>"
+  }
+
+  give "{\"error\":\"Not Found\",\"route\":\"" + route + "\"}"
+}
+
+// ─── Start ───────────────────────────────────────────────────────────────────
+
+hold port = 8081
+when argc() > 0 { port = num(argv(0)) }
+when port <= 0 { port = 8081 }
+
+say("=== Ori Todo API Server ===")
+say("DB mode : " + DB_MODE)
+
+hold ok = orm_init()
+when ok == 0 {
+  say("ERROR: Failed to connect to database")
+} else {
+  say("DB OK   : ready")
+  say("Port    : " + str(port))
+  say("Endpoint: http://localhost:" + str(port) + "/api/todos")
+  say("Press Ctrl+C to stop.")
+  http_serve(port, "router")
+}

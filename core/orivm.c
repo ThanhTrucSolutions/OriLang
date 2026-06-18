@@ -716,9 +716,8 @@ static Value h_run(VM* vm, Value* a, int argc){
 #endif
 #endif
 }
-static Value h_mkdirs(VM* vm, Value* a, int argc){
-    if(argc<1||a[0].t!=V_STR) return vnum(0);
-    char tmp[1024]; strncpy(tmp,a[0].u.s->d,sizeof tmp-1); tmp[sizeof tmp-1]=0;
+static void ori_mkdirs(const char* path){
+    char tmp[1024]; strncpy(tmp,path,sizeof tmp-1); tmp[sizeof tmp-1]=0;
     for(char* p=tmp+1; *p; p++){
         if(*p=='/'||*p=='\\'){ char c=*p; *p=0;
 #ifdef _WIN32
@@ -734,6 +733,10 @@ static Value h_mkdirs(VM* vm, Value* a, int argc){
 #else
     mkdir(tmp,0755);
 #endif
+}
+static Value h_mkdirs(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vnum(0);
+    ori_mkdirs(a[0].u.s->d);
     return vnum(1);
 }
 static Value h_copy(VM* vm, Value* a, int argc){
@@ -920,7 +923,7 @@ static Value h_http_serve(VM* vm, Value* a, int argc){
         setsockopt(conn,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv));
         setsockopt(conn,SOL_SOCKET,SO_SNDTIMEO,&tv,sizeof(tv));
 #endif
-        /* read until we have complete headers or 1 MB */
+        /* read headers (until \r\n\r\n) */
         int total=0;
         while(total<(int)sizeof(req_buf)-1){
             int r=(int)recv(conn,req_buf+total,(int)(sizeof(req_buf)-1-total),0);
@@ -934,10 +937,38 @@ static Value h_http_serve(VM* vm, Value* a, int argc){
         int mi=0; while(*rp&&*rp!=' '&&mi<15) method[mi++]=*rp++; method[mi]=0;
         if(*rp==' ') rp++;
         int pi=0; while(*rp&&*rp!=' '&&*rp!='\r'&&*rp!='\n'&&pi<2047) path[pi++]=*rp++; path[pi]=0;
-        /* body = after \r\n\r\n */
-        const char* body="";
+        /* find header/body boundary */
         char* sep=strstr(req_buf,"\r\n\r\n");
-        if(sep) body=sep+4; else { sep=strstr(req_buf,"\n\n"); if(sep) body=sep+2; }
+        int body_offset=sep?(int)(sep-req_buf)+4:total;
+        if(!sep){ char* sep2=strstr(req_buf,"\n\n"); if(sep2){ body_offset=(int)(sep2-req_buf)+2; sep=sep2; } }
+        /* parse Content-Length (case-insensitive header scan) */
+        int clen=0;
+        {
+            const char* h=req_buf;
+            while(h<req_buf+body_offset-16){
+                if((*h=='c'||*h=='C') &&
+                   (h[1]=='o'||h[1]=='O') && (h[2]=='n'||h[2]=='N') &&
+                   (h[3]=='t'||h[3]=='T') && (h[4]=='e'||h[4]=='E') &&
+                   (h[5]=='n'||h[5]=='N') && (h[6]=='t'||h[6]=='T') &&
+                   h[7]=='-' &&
+                   (h[8]=='l'||h[8]=='L') && (h[9]=='e'||h[9]=='E') &&
+                   (h[10]=='n'||h[10]=='N') && (h[11]=='g'||h[11]=='G') &&
+                   (h[12]=='t'||h[12]=='T') && (h[13]=='h'||h[13]=='H') &&
+                   h[14]==':'){
+                    clen=(int)strtol(h+15,NULL,10); break;
+                }
+                h++;
+            }
+        }
+        if(clen<0) clen=0;
+        if(clen>(int)sizeof(req_buf)-body_offset-1) clen=(int)sizeof(req_buf)-body_offset-1;
+        /* read remaining body bytes if not already buffered */
+        while(clen>0 && total-body_offset<clen && total<(int)sizeof(req_buf)-1){
+            int r=(int)recv(conn,req_buf+total,(int)(sizeof(req_buf)-1-total),0);
+            if(r<=0) break; total+=r; req_buf[total]=0;
+        }
+        /* body pointer */
+        const char* body=sep?req_buf+body_offset:"";
         /* build route string */
         char route[2080]; snprintf(route,sizeof route,"%s %s",method,path);
         fprintf(stderr,"[Ori] %s %s\n",method,path); fflush(stderr);
@@ -1016,19 +1047,373 @@ static Value h_read_bytes_b64(VM* vm, Value* a, int argc){
     Value v=vstr_n(out,(int)outLen); free(out); return v;
 }
 
+// json_get_str(json, key) — extract string value of a JSON key
+static Value h_json_get_str(VM* vm, Value* a, int argc){
+    if(argc<2||a[0].t!=V_STR||a[1].t!=V_STR) return vstr("");
+    const char* js=a[0].u.s->d; const char* key=a[1].u.s->d;
+    char needle[512]; snprintf(needle,sizeof needle,"\"%s\":",key);
+    const char* p=strstr(js,needle); if(!p) return vstr("");
+    p+=strlen(needle);
+    while(*p==' '||*p=='\t') p++;
+    if(*p!='"') return vstr("");
+    p++;
+    const char* start=p;
+    char buf[65536]; int bi=0;
+    while(*p&&*p!='"'&&bi<(int)sizeof(buf)-1){
+        if(*p=='\\'&&*(p+1)){
+            p++;
+            switch(*p){
+                case 'n': buf[bi++]='\n'; break;
+                case 't': buf[bi++]='\t'; break;
+                case 'r': buf[bi++]='\r'; break;
+                case '"': buf[bi++]='"'; break;
+                case '\\': buf[bi++]='\\'; break;
+                default: buf[bi++]='\\'; if(bi<(int)sizeof(buf)-1) buf[bi++]=*p; break;
+            }
+        } else { buf[bi++]=*p; }
+        p++;
+    }
+    buf[bi]=0; (void)start;
+    return vstr_n(buf,bi);
+}
+
+// json_get_num(json, key) — extract numeric value of a JSON key
+static Value h_json_get_num(VM* vm, Value* a, int argc){
+    if(argc<2||a[0].t!=V_STR||a[1].t!=V_STR) return vnum(0);
+    const char* js=a[0].u.s->d; const char* key=a[1].u.s->d;
+    char needle[512]; snprintf(needle,sizeof needle,"\"%s\":",key);
+    const char* p=strstr(js,needle); if(!p) return vnum(0);
+    p+=strlen(needle);
+    while(*p==' '||*p=='\t') p++;
+    char* end; double d=strtod(p,&end);
+    if(end==p) return vnum(0);
+    return vnum(isfinite(d)?d:0);
+}
+
+// json_escape(str) — escape a string for inclusion in JSON
+static Value h_json_escape(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vstr("");
+    Str* s=a[0].u.s;
+    char* buf=(char*)xmalloc(s->len*6+3);
+    int bi=0;
+    for(int i=0;i<s->len;i++){
+        unsigned char c=(unsigned char)s->d[i];
+        if(c=='"'){ buf[bi++]='\\'; buf[bi++]='"'; }
+        else if(c=='\\'){ buf[bi++]='\\'; buf[bi++]='\\'; }
+        else if(c=='\n'){ buf[bi++]='\\'; buf[bi++]='n'; }
+        else if(c=='\r'){ buf[bi++]='\\'; buf[bi++]='r'; }
+        else if(c=='\t'){ buf[bi++]='\\'; buf[bi++]='t'; }
+        else if(c<0x20){ /* skip control chars */ }
+        else { buf[bi++]=(char)c; }
+    }
+    buf[bi]=0;
+    Value v=vstr_n(buf,bi); free(buf); return v;
+}
+
+static Value h_json_parse_arr(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return varr_new();
+    const char* s=a[0].u.s->d;
+    int n=(int)a[0].u.s->len;
+    Value arr=varr_new();
+    int depth=0, obj_start=-1;
+    for(int i=0;i<n;i++){
+        char c=s[i];
+        if(c=='"'){ i++; while(i<n&&s[i]!='"'){ if(s[i]=='\\') i++; i++; } continue; }
+        if(c=='{'){
+            if(depth==0) obj_start=i;
+            depth++;
+        } else if(c=='}'){
+            depth--;
+            if(depth==0&&obj_start>=0){
+                arr_push(arr.u.a, vstr_n(s+obj_start, i-obj_start+1));
+                obj_start=-1;
+            }
+        }
+    }
+    return arr;
+}
+
+static Value h_http_put(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vstr("");
+    const char* url=a[0].u.s->d;
+    if(!url_shell_safe(url)){ fprintf(stderr,"[Ori] http_put: URL unsafe\n"); return vstr(""); }
+    if(strlen(url)>1800){ fprintf(stderr,"[Ori] http_put: URL too long\n"); return vstr(""); }
+    const char* body=argc>=2&&a[1].t==V_STR?a[1].u.s->d:"{}";
+    char tmp[512]; static int put_seq=0;
+#ifdef _WIN32
+    char td[MAX_PATH]; GetTempPathA(sizeof td,td);
+    snprintf(tmp,sizeof tmp,"%sori_put_%lu_%d.tmp",td,(unsigned long)GetCurrentProcessId(),++put_seq);
+#else
+    snprintf(tmp,sizeof tmp,"/tmp/ori_put_%d_%d.tmp",(int)getpid(),++put_seq);
+#endif
+    FILE* tf=fopen(tmp,"wb"); if(!tf) return vstr("");
+    fwrite(body,1,strlen(body),tf); fclose(tf);
+    char cmd[2600];
+#ifdef _WIN32
+    snprintf(cmd,sizeof cmd,"curl -sL --max-time 8 -X PUT -H \"Content-Type: application/json\" --data-binary @\"%s\" \"%s\" 2>nul",tmp,url);
+    FILE* p=_popen(cmd,"r");
+#else
+    snprintf(cmd,sizeof cmd,"curl -sL --max-time 8 -X PUT -H 'Content-Type: application/json' --data-binary @'%s' '%s' 2>/dev/null",tmp,url);
+    FILE* p=popen(cmd,"r");
+#endif
+    char buf[65536]; size_t total=0,r;
+    if(p){ while((r=fread(buf+total,1,sizeof buf-total-1,p))>0){ total+=r; if(total>=sizeof buf-1) break; }
+        buf[total]=0;
+#ifdef _WIN32
+        _pclose(p);
+#else
+        pclose(p);
+#endif
+    } else buf[0]=0;
+    remove(tmp); return vstr_n(buf,(int)total);
+}
+
+static Value h_http_delete(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vstr("");
+    const char* url=a[0].u.s->d;
+    if(!url_shell_safe(url)){ fprintf(stderr,"[Ori] http_delete: URL unsafe\n"); return vstr(""); }
+    if(strlen(url)>1800){ fprintf(stderr,"[Ori] http_delete: URL too long\n"); return vstr(""); }
+    char cmd[2048];
+#ifdef _WIN32
+    snprintf(cmd,sizeof cmd,"curl -sL --max-time 8 -X DELETE \"%s\" 2>nul",url);
+    FILE* p=_popen(cmd,"r");
+#else
+    snprintf(cmd,sizeof cmd,"curl -sL --max-time 8 -X DELETE '%s' 2>/dev/null",url);
+    FILE* p=popen(cmd,"r");
+#endif
+    char buf[65536]; size_t total=0,r;
+    if(p){ while((r=fread(buf+total,1,sizeof buf-total-1,p))>0){ total+=r; if(total>=sizeof buf-1) break; }
+        buf[total]=0;
+#ifdef _WIN32
+        _pclose(p);
+#else
+        pclose(p);
+#endif
+    } else buf[0]=0;
+    return vstr_n(buf,(int)total);
+}
+
+// store_next_id(dir) — returns next auto-increment ID for a table directory
+static Value h_store_next_id(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vnum(1);
+    ori_mkdirs(a[0].u.s->d);
+    char path[1024]; snprintf(path,sizeof path,"%s/_seq",a[0].u.s->d);
+    int id=1;
+    FILE* f=fopen(path,"r"); if(f){ fscanf(f,"%d",&id); fclose(f); }
+    FILE* w=fopen(path,"w"); if(w){ fprintf(w,"%d",id+1); fclose(w); }
+    return vnum((double)id);
+}
+
+// store_set(dir, id, json) — write a record; creates dir if needed
+static Value h_store_set(VM* vm, Value* a, int argc){
+    if(argc<3||a[0].t!=V_STR||a[2].t!=V_STR) return vnum(0);
+    const char* dir=a[0].u.s->d;
+    char id_s[64]; int iid=safe_int(a[1].t==V_NUM?a[1].u.num:0);
+    if(a[1].t==V_STR) snprintf(id_s,sizeof id_s,"%s",a[1].u.s->d);
+    else snprintf(id_s,sizeof id_s,"%d",iid);
+    ori_mkdirs(dir);
+    char path[1024]; snprintf(path,sizeof path,"%s/%s.json",dir,id_s);
+    FILE* f=fopen(path,"wb"); if(!f) return vnum(0);
+    fwrite(a[2].u.s->d,1,a[2].u.s->len,f); fclose(f); return vnum(1);
+}
+
+// store_get(dir, id) — read a record; returns "" if not found
+static Value h_store_get(VM* vm, Value* a, int argc){
+    if(argc<2||a[0].t!=V_STR) return vstr("");
+    char id_s[64]; int iid=safe_int(a[1].t==V_NUM?a[1].u.num:0);
+    if(a[1].t==V_STR) snprintf(id_s,sizeof id_s,"%s",a[1].u.s->d);
+    else snprintf(id_s,sizeof id_s,"%d",iid);
+    char path[1024]; snprintf(path,sizeof path,"%s/%s.json",a[0].u.s->d,id_s);
+    FILE* f=fopen(path,"rb"); if(!f) return vstr("");
+    fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
+    if(n<=0||n>1048576){ fclose(f); return vstr(""); }
+    char* buf=(char*)xmalloc(n+1); size_t got=fread(buf,1,n,f); fclose(f); buf[got]=0;
+    Value v=vstr_n(buf,(int)got); free(buf); return v;
+}
+
+// store_delete(dir, id) — delete a record; returns 1 if deleted
+static Value h_store_delete(VM* vm, Value* a, int argc){
+    if(argc<2||a[0].t!=V_STR) return vnum(0);
+    char id_s[64]; int iid=safe_int(a[1].t==V_NUM?a[1].u.num:0);
+    if(a[1].t==V_STR) snprintf(id_s,sizeof id_s,"%s",a[1].u.s->d);
+    else snprintf(id_s,sizeof id_s,"%d",iid);
+    char path[1024]; snprintf(path,sizeof path,"%s/%s.json",a[0].u.s->d,id_s);
+    return vnum(remove(path)==0?1:0);
+}
+
+// store_list(dir) — returns array of all JSON records in the directory
+static Value h_store_list(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return varr_new();
+    const char* dir=a[0].u.s->d;
+    Value arr=varr_new();
+#ifdef _WIN32
+    char pat[1024]; snprintf(pat,sizeof pat,"%s\\*.json",dir);
+    WIN32_FIND_DATAA fd; HANDLE h=FindFirstFileA(pat,&fd);
+    if(h==INVALID_HANDLE_VALUE) return arr;
+    do {
+        if(strcmp(fd.cFileName,"_seq.json")==0) continue;
+        char path[1024]; snprintf(path,sizeof path,"%s\\%s",dir,fd.cFileName);
+        FILE* f=fopen(path,"rb"); if(!f) continue;
+        fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
+        if(n>0&&n<=1048576){
+            char* buf=(char*)xmalloc(n+1); size_t got=fread(buf,1,n,f);
+            buf[got]=0; arr_push(arr.u.a,vstr_n(buf,(int)got)); free(buf);
+        }
+        fclose(f);
+    } while(FindNextFileA(h,&fd));
+    FindClose(h);
+#else
+    DIR* d=opendir(dir); if(!d) return arr;
+    struct dirent* en;
+    while((en=readdir(d))!=NULL){
+        const char* nm=en->d_name;
+        int nl=strlen(nm);
+        if(nl<6||strcmp(nm+nl-5,".json")!=0) continue;
+        if(strcmp(nm,"_seq.json")==0) continue;
+        char path[1024]; snprintf(path,sizeof path,"%s/%s",dir,nm);
+        FILE* f=fopen(path,"rb"); if(!f) continue;
+        fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
+        if(n>0&&n<=1048576){
+            char* buf=(char*)xmalloc(n+1); size_t got=fread(buf,1,n,f);
+            buf[got]=0; arr_push(arr.u.a,vstr_n(buf,(int)got)); free(buf);
+        }
+        fclose(f);
+    }
+    closedir(d);
+#endif
+    return arr;
+}
+
+#ifdef ORI_MYSQL
+/* MySQL must be installed: https://dev.mysql.com/downloads/connector/c/
+   Build: cl /DORI_MYSQL /I"path\to\mysql\include" orivm.c mysqlclient.lib */
+#include <mysql.h>
+
+#define ORI_DB_MAX 8
+static MYSQL* g_db[ORI_DB_MAX];
+
+static Value h_db_connect(VM* vm, Value* a, int argc){
+    if(argc<5) return vnum(0);
+    const char* host=a[0].t==V_STR?a[0].u.s->d:"localhost";
+    int port=a[1].t==V_NUM?(int)a[1].u.num:3306;
+    const char* user=a[2].t==V_STR?a[2].u.s->d:"root";
+    const char* pass=a[3].t==V_STR?a[3].u.s->d:"";
+    const char* db=a[4].t==V_STR?a[4].u.s->d:"";
+    int slot=-1;
+    for(int i=0;i<ORI_DB_MAX;i++) if(!g_db[i]){slot=i;break;}
+    if(slot<0){fprintf(stderr,"[Ori] db_connect: connection pool full\n");return vnum(0);}
+    MYSQL* m=mysql_init(NULL);
+    if(!m) return vnum(0);
+    if(!mysql_real_connect(m,host,user,pass,db,(unsigned int)port,NULL,0)){
+        fprintf(stderr,"[Ori] db_connect error: %s\n",mysql_error(m));
+        mysql_close(m); return vnum(0);
+    }
+    mysql_set_character_set(m,"utf8mb4");
+    g_db[slot]=m; return vnum((double)(slot+1));
+}
+
+static Value h_db_exec(VM* vm, Value* a, int argc){
+    if(argc<2||a[0].t!=V_NUM||a[1].t!=V_STR) return vnum(-1);
+    int slot=(int)a[0].u.num-1;
+    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return vnum(-1);
+    if(mysql_query(g_db[slot],a[1].u.s->d)){
+        fprintf(stderr,"[Ori] db_exec error: %s\n",mysql_error(g_db[slot])); return vnum(-1);
+    }
+    return vnum((double)mysql_affected_rows(g_db[slot]));
+}
+
+static Value h_db_query(VM* vm, Value* a, int argc){
+    Value arr=varr_new();
+    if(argc<2||a[0].t!=V_NUM||a[1].t!=V_STR) return arr;
+    int slot=(int)a[0].u.num-1;
+    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return arr;
+    if(mysql_query(g_db[slot],a[1].u.s->d)){
+        fprintf(stderr,"[Ori] db_query error: %s\n",mysql_error(g_db[slot])); return arr;
+    }
+    MYSQL_RES* res=mysql_store_result(g_db[slot]); if(!res) return arr;
+    unsigned int nc=mysql_num_fields(res);
+    MYSQL_FIELD* fields=mysql_fetch_fields(res);
+    MYSQL_ROW row;
+    Sb sb;
+    while((row=mysql_fetch_row(res))!=NULL){
+        sb_init(&sb); sb_putc(&sb,'{');
+        unsigned long* lens=mysql_fetch_lengths(res);
+        for(unsigned int i=0;i<nc;i++){
+            if(i) sb_putc(&sb,',');
+            sb_putc(&sb,'"'); sb_puts(&sb,fields[i].name); sb_puts(&sb,"\":");
+            if(!row[i]){ sb_puts(&sb,"null"); }
+            else if(IS_NUM_FIELD(fields[i].flags)){
+                sb_put(&sb,row[i],(int)lens[i]);
+            } else {
+                sb_putc(&sb,'"');
+                for(unsigned long j=0;j<lens[i];j++){
+                    char c=row[i][j];
+                    if(c=='"'){ sb_putc(&sb,'\\'); sb_putc(&sb,'"'); }
+                    else if(c=='\\'){ sb_putc(&sb,'\\'); sb_putc(&sb,'\\'); }
+                    else if(c=='\n'){ sb_putc(&sb,'\\'); sb_putc(&sb,'n'); }
+                    else { sb_putc(&sb,c); }
+                }
+                sb_putc(&sb,'"');
+            }
+        }
+        sb_putc(&sb,'}'); arr_push(arr.u.a,vstr_n(sb.d,sb.len)); free(sb.d);
+    }
+    mysql_free_result(res); return arr;
+}
+
+static Value h_db_escape(VM* vm, Value* a, int argc){
+    if(argc<2||a[0].t!=V_NUM||a[1].t!=V_STR) return vstr("");
+    int slot=(int)a[0].u.num-1;
+    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return vstr("");
+    Str* s=a[1].u.s;
+    char* buf=(char*)xmalloc(s->len*2+1);
+    mysql_real_escape_string(g_db[slot],buf,s->d,(unsigned long)s->len);
+    Value v=vstr(buf); free(buf); return v;
+}
+
+static Value h_db_last_id(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_NUM) return vnum(0);
+    int slot=(int)a[0].u.num-1;
+    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return vnum(0);
+    return vnum((double)mysql_insert_id(g_db[slot]));
+}
+
+static Value h_db_error(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_NUM) return vstr("");
+    int slot=(int)a[0].u.num-1;
+    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return vstr("");
+    return vstr(mysql_error(g_db[slot]));
+}
+
+static Value h_db_close(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_NUM) return vnil();
+    int slot=(int)a[0].u.num-1;
+    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return vnil();
+    mysql_close(g_db[slot]); g_db[slot]=NULL; return vnil();
+}
+#else
+static Value h_db_connect(VM* vm, Value* a, int argc){ rt_error("db_connect: MySQL support not compiled in (rebuild with -DORI_MYSQL)"); return vnil(); }
+static Value h_db_exec(VM* vm, Value* a, int argc){ rt_error("db_exec: MySQL support not compiled in"); return vnil(); }
+static Value h_db_query(VM* vm, Value* a, int argc){ rt_error("db_query: MySQL support not compiled in"); return vnil(); }
+static Value h_db_escape(VM* vm, Value* a, int argc){ rt_error("db_escape: MySQL support not compiled in"); return vnil(); }
+static Value h_db_last_id(VM* vm, Value* a, int argc){ rt_error("db_last_id: MySQL support not compiled in"); return vnil(); }
+static Value h_db_error(VM* vm, Value* a, int argc){ rt_error("db_error: MySQL support not compiled in"); return vnil(); }
+static Value h_db_close(VM* vm, Value* a, int argc){ rt_error("db_close: MySQL support not compiled in"); return vnil(); }
+#endif /* ORI_MYSQL */
+
 static void register_hosts(VM* vm){
     static const char* names[] = {
         "say","print","str","num","len","push","pop","char_at","ord","chr","substr","type",
         "abs","floor","sqrt","max","min","upper","lower",
         "read_file","write_bytes","write_file","argc","argv",
         "env","exists","sh","run","mkdirs","copy","glob","abspath",
-        "is_dir","mtime","sleep_ms","read_bytes_b64","http_get","http_post","http_serve" };
+        "is_dir","mtime","sleep_ms","read_bytes_b64","http_get","http_post","http_serve","json_get_str","json_get_num","json_escape","json_parse_arr","http_put","http_delete","store_next_id","store_set","store_get","store_delete","store_list","db_connect","db_exec","db_query","db_escape","db_last_id","db_error","db_close" };
     static HostFn fns[] = {
         h_say,h_say,h_str,h_num,h_len,h_push,h_pop,h_char_at,h_ord,h_chr,h_substr,h_type,
         h_abs,h_floor,h_sqrt,h_max,h_min,h_upper,h_lower,
         h_read_file,h_write_bytes,h_write_file,h_argc,h_argv,
         h_env,h_exists,h_sh,h_run,h_mkdirs,h_copy,h_glob,h_abspath,
-        h_is_dir,h_mtime,h_sleep_ms,h_read_bytes_b64,h_http_get,h_http_post,h_http_serve };
+        h_is_dir,h_mtime,h_sleep_ms,h_read_bytes_b64,h_http_get,h_http_post,h_http_serve,h_json_get_str,h_json_get_num,h_json_escape,h_json_parse_arr,h_http_put,h_http_delete,h_store_next_id,h_store_set,h_store_get,h_store_delete,h_store_list,h_db_connect,h_db_exec,h_db_query,h_db_escape,h_db_last_id,h_db_error,h_db_close };
     int n=(int)(sizeof(names)/sizeof(names[0]));
     vm->hostNames=names; vm->hostFns=fns; vm->hostCount=n;
     for(int i=0;i<n;i++) g_set(vm,names[i],vhost(i));
