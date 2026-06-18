@@ -1,0 +1,23 @@
+name: crypto-tracker
+version: 1.0.0
+entry: ori/main.ori
+platform: windows
+
+# Ori Crypto Tracker — live prices from CoinGecko (free API, no key required).
+#
+# The render/dispatch UI model means this same Ori source runs everywhere:
+#   ori build samples/crypto-tracker wechat-mini-program   → WeChat Mini Program
+#   ori build samples/crypto-tracker alipay-mini-program   → Alipay Mini Program
+#   ori build samples/crypto-tracker telegram-mini-app     → Telegram Mini App
+#   ori build samples/crypto-tracker zalo-mini-app         → Zalo Mini App
+#   ori build samples/crypto-tracker line-mini-app         → LINE Mini App
+#   ori build samples/crypto-tracker grab-mini-app         → Grab Mini App
+#   ori build samples/crypto-tracker momo-mini-app         → Momo Mini App
+#   ori build samples/crypto-tracker chrome-extension      → Chrome Extension
+#   ori build samples/crypto-tracker web                   → Web (WASM)
+#   ori build samples/crypto-tracker windows               → Windows console
+#   ori build samples/crypto-tracker linux                 → Linux bundle
+#   ori build samples/crypto-tracker android               → Android APK
+#
+# Or build for ALL platforms at once:
+#   ori export samples/crypto-tracker
