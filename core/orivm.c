@@ -694,7 +694,7 @@ static Value h_argv(VM* vm, Value* a, int argc){ int i=(int)argnum(a,argc,0); if
 
 // ---- OS / build host functions (so the toolchain can be written in Ori) ----
 static Value h_env(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_STR) return vstr(""); char* e=getenv(a[0].u.s->d); return vstr(e?e:""); }
-static Value h_exists(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_STR) return vnum(0); struct stat st; return vnum(stat(a[0].u.s->d,&st)==0?1:0); }
+static Value h_exists(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_STR) return vnum(0); if(has_dotdot(a[0].u.s->d)) return vnum(0); struct stat st; return vnum(stat(a[0].u.s->d,&st)==0?1:0); }
 /* DANGER: bare system() — compile with -DORI_NO_SHELL to disable in networked contexts */
 static Value h_sh(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vnum(-1);
@@ -1025,11 +1025,13 @@ static Value h_http_serve(VM* vm, Value* a, int argc){
 
 static Value h_is_dir(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vnum(0);
+    if(has_dotdot(a[0].u.s->d)) return vnum(0);
     struct stat st; if(stat(a[0].u.s->d,&st)!=0) return vnum(0);
     return vnum((st.st_mode & S_IFDIR)?1:0);
 }
 static Value h_mtime(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vnum(0);
+    if(has_dotdot(a[0].u.s->d)) return vnum(0);
 #ifdef _WIN32
     WIN32_FILE_ATTRIBUTE_DATA d;
     if(!GetFileAttributesExA(a[0].u.s->d,GetFileExInfoStandard,&d)) return vnum(0);
@@ -1051,6 +1053,7 @@ static Value h_sleep_ms(VM* vm, Value* a, int argc){
 }
 static Value h_read_bytes_b64(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vstr("");
+    if(has_dotdot(a[0].u.s->d)){ fprintf(stderr,"[Ori] read_bytes_b64: path traversal rejected\n"); return vstr(""); }
     FILE* f=fopen(a[0].u.s->d,"rb"); if(!f) return vstr("");
     fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
     if(n<0||n>64*1024*1024){ fclose(f); return vstr(""); }
@@ -1271,6 +1274,7 @@ static int store_id_safe(Value* v, char* out, int outsz){
 #define STORE_SEQ_MAX 2000000000
 static Value h_store_next_id(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vnum(1);
+    if(has_dotdot(a[0].u.s->d)){ fprintf(stderr,"[Ori] store_next_id: path traversal rejected\n"); return vnum(1); }
     ori_mkdirs(a[0].u.s->d);
     char path[1024]; snprintf(path,sizeof path,"%s/_seq",a[0].u.s->d);
     int id=1;
@@ -1283,6 +1287,7 @@ static Value h_store_next_id(VM* vm, Value* a, int argc){
 static Value h_store_set(VM* vm, Value* a, int argc){
     if(argc<3||a[0].t!=V_STR||a[2].t!=V_STR) return vnum(0);
     if(a[0].u.s->len>STORE_DIR_MAX) return vnum(0);
+    if(has_dotdot(a[0].u.s->d)){ fprintf(stderr,"[Ori] store_set: path traversal rejected\n"); return vnum(0); }
     const char* dir=a[0].u.s->d;
     char id_s[64]; if(store_id_safe(&a[1],id_s,sizeof id_s)<0) return vnum(0);
     ori_mkdirs(dir);
@@ -1295,6 +1300,7 @@ static Value h_store_set(VM* vm, Value* a, int argc){
 static Value h_store_get(VM* vm, Value* a, int argc){
     if(argc<2||a[0].t!=V_STR) return vstr("");
     if(a[0].u.s->len>STORE_DIR_MAX) return vstr("");
+    if(has_dotdot(a[0].u.s->d)){ fprintf(stderr,"[Ori] store_get: path traversal rejected\n"); return vstr(""); }
     char id_s[64]; if(store_id_safe(&a[1],id_s,sizeof id_s)<0) return vstr("");
     char path[1024]; snprintf(path,sizeof path,"%s/%s.json",a[0].u.s->d,id_s);
     FILE* f=fopen(path,"rb"); if(!f) return vstr("");
@@ -1308,6 +1314,7 @@ static Value h_store_get(VM* vm, Value* a, int argc){
 static Value h_store_delete(VM* vm, Value* a, int argc){
     if(argc<2||a[0].t!=V_STR) return vnum(0);
     if(a[0].u.s->len>STORE_DIR_MAX) return vnum(0);
+    if(has_dotdot(a[0].u.s->d)){ fprintf(stderr,"[Ori] store_delete: path traversal rejected\n"); return vnum(0); }
     char id_s[64]; if(store_id_safe(&a[1],id_s,sizeof id_s)<0) return vnum(0);
     char path[1024]; snprintf(path,sizeof path,"%s/%s.json",a[0].u.s->d,id_s);
     return vnum(remove(path)==0?1:0);
@@ -1318,6 +1325,7 @@ static Value h_store_delete(VM* vm, Value* a, int argc){
 static Value h_store_list(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return varr_new();
     if(a[0].u.s->len>STORE_DIR_MAX) return varr_new();
+    if(has_dotdot(a[0].u.s->d)){ fprintf(stderr,"[Ori] store_list: path traversal rejected\n"); return varr_new(); }
     const char* dir=a[0].u.s->d;
     Value arr=varr_new();
     int count=0;
