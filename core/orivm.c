@@ -468,7 +468,7 @@ static Value run(VM* vm){
                 case OP_ADD: { Value b=pop(vm),a=pop(vm); push(vm,bin_add(a,b)); break; }
                 case OP_SUB: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a-b)); break; }
                 case OP_MUL: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a*b)); break; }
-                case OP_DIV: { double b=need_num(pop(vm)),a=need_num(pop(vm)); if(b==0) rt_error("division by zero"); push(vm,vnum(a/b)); break; }
+                case OP_DIV: { double b=need_num(pop(vm)),a=need_num(pop(vm)); if(b==0 && a!=0) rt_error("division by zero"); push(vm,vnum(a/b)); break; }
                 case OP_MOD: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(fmod(a,b))); break; }
                 case OP_NEG: { double a=need_num(pop(vm)); push(vm,vnum(-a)); break; }
                 case OP_EQ: { Value b=pop(vm),a=pop(vm); push(vm,vbool(val_eq(a,b))); break; }

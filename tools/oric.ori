@@ -271,6 +271,15 @@ fold p_register_builtins() {
     p_set_arity("mkdirs", 1)
     p_set_arity("copy", 2)
     p_set_arity("abspath", 1)
+    p_set_arity("max", 2)
+    p_set_arity("min", 2)
+    p_set_arity("run", 2)
+    p_set_arity("glob", 1)
+    p_set_arity("is_dir", 1)
+    p_set_arity("mtime", 1)
+    p_set_arity("sleep_ms", 1)
+    p_set_arity("read_bytes_b64", 1)
+    p_set_arity("http_get", 1)
 }
 fold starts_arg() {
     hold k = p_kind()
@@ -823,6 +832,75 @@ fold compile_program(prog) {
 //  Serialize to a .orb byte buffer
 // ---------------------------------------------------------------------------
 fold emit_u8(buf, b) { push(buf, b % 256) }
+
+// Emit 8 bytes of an IEEE 754 double (little-endian) using pure Ori arithmetic.
+// The Ori tokenizer only handles integer/decimal literals, so all constants here
+// must be plain integers or simple decimals — no scientific notation.
+// IMPORTANT: all numeric literals must fit in int32 range [-2147483647, 2147483647]
+// because the bootstrap compiler uses OP_PUSHINT (int32 arg) for all integers.
+// Values 2^31, 2^32, 2^52 are computed at runtime from int32-range sub-expressions.
+// Covers: NaN, +-0, +-Inf, normals, subnormals (emitted as signed zero).
+fold emit_double(buf, v) {
+    // NaN is the only value that is not equal to itself
+    when v != v {
+        emit_i32(buf, 0)
+        emit_i32(buf, 2146959360)
+        give 0
+    }
+    when v == 0 {
+        emit_i32(buf, 0)
+        emit_i32(buf, 0)
+        give 0
+    }
+    hold sign = 0
+    hold mag = v
+    when v < 0 {
+        sign = 1
+        mag = 0 - v
+    }
+    // 2^31 = 2147483648. Split into two int32-range addends to avoid literal overflow.
+    hold sign_bit = 1073741824 + 1073741824
+    // Inf: the only non-NaN value where x+x == x
+    when mag + mag == mag {
+        emit_i32(buf, 0)
+        emit_i32(buf, sign * sign_bit + 2146435072)
+        give 0
+    }
+    // Find biased binary exponent: normalize m into [1, 2)
+    hold exp = 0
+    hold m = mag
+    when m >= 1 {
+        loop m >= 2 {
+            m = m / 2
+            exp = exp + 1
+        }
+    } else {
+        loop m < 1 {
+            m = m * 2
+            exp = exp - 1
+        }
+    }
+    // Subnormal (biased exp would be 0 or negative) — emit as signed zero
+    when exp < 0 - 1022 {
+        emit_i32(buf, 0)
+        emit_i32(buf, sign * sign_bit)
+        give 0
+    }
+    hold biased_exp = exp + 1023
+    // mantissa: 52 fractional bits of m (which is in [1,2))
+    // 2^52 = 4503599627370496. Computed as 4096*1048576*1048576 (int32-range literals only).
+    hold scale52 = 4096 * 1048576 * 1048576
+    hold mantissa_int = floor((m - 1) * scale52)
+    // 2^32 = 4294967296. Computed as 65536*65536 (int32-range literals only).
+    hold mod32 = 65536 * 65536
+    hold m_lo = mantissa_int % mod32
+    hold m_hi = floor(mantissa_int / mod32)
+    hold hi = sign * sign_bit + biased_exp * 1048576 + m_hi
+    emit_i32(buf, floor(m_lo))
+    emit_i32(buf, floor(hi))
+    give 0
+}
+
 fold emit_i32(buf, v) {
     emit_u8(buf, v % 256)
     emit_u8(buf, floor(v / 256) % 256)
