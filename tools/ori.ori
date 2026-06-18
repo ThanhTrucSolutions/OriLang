@@ -71,6 +71,26 @@ fold to_native_sep s {
 fold jp3 a b c { give jp(jp(a, b), c) }
 fold jp4 a b c d { give jp(jp(jp(a, b), c), d) }
 
+// Sanitize app name: allow [a-zA-Z0-9_-] only, max 64 chars, never empty.
+// Prevents path traversal and shell/YAML/Dockerfile injection via .meta fields.
+fold safe_name s {
+    hold out = ""
+    hold i   = 0
+    hold lim = len(s)
+    when lim > 64 { lim = 64 }
+    loop i < lim {
+        hold c = char_at(s, i)
+        hold n = ord(c)
+        when (n >= 97 && n <= 122) || (n >= 65 && n <= 90) ||
+             (n >= 48 && n <= 57)  || c == "-" || c == "_" {
+            out = out + c
+        }
+        i = i + 1
+    }
+    when len(out) == 0 { out = "app" }
+    give out
+}
+
 // ===== FILE UTILITIES =====
 fold write_text path content {
     write_file(path, content)
@@ -130,6 +150,23 @@ fold read_meta proj {
             }
         }
         pos = nl + 1
+    }
+    // Sanitize: name must not contain path chars; entry must not escape project dir
+    m_name = safe_name(m_name)
+    hold entry_safe = yes
+    when len(m_entry) == 0 { entry_safe = no }
+    when char_at(m_entry, 0) == "/" { entry_safe = no }
+    when char_at(m_entry, 0) == "\\" { entry_safe = no }
+    hold ei = 0
+    loop ei < len(m_entry) - 1 {
+        when char_at(m_entry, ei) == "." && char_at(m_entry, ei + 1) == "." {
+            entry_safe = no
+        }
+        ei = ei + 1
+    }
+    when !entry_safe {
+        say("ori: unsafe entry path in .meta: " + m_entry)
+        give none
     }
     give [m_name, m_ver, m_entry, m_platform, m_ui]
 }

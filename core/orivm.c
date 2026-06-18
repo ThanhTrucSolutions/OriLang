@@ -1113,12 +1113,13 @@ static Value h_json_escape(VM* vm, Value* a, int argc){
     Value v=vstr_n(buf,bi); free(buf); return v;
 }
 
+#define JSON_ARR_MAX 10000
 static Value h_json_parse_arr(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return varr_new();
     const char* s=a[0].u.s->d;
     int n=(int)a[0].u.s->len;
     Value arr=varr_new();
-    int depth=0, obj_start=-1;
+    int depth=0, obj_start=-1, count=0;
     for(int i=0;i<n;i++){
         char c=s[i];
         if(c=='"'){ i++; while(i<n&&s[i]!='"'){ if(s[i]=='\\') i++; i++; } continue; }
@@ -1126,10 +1127,11 @@ static Value h_json_parse_arr(VM* vm, Value* a, int argc){
             if(depth==0) obj_start=i;
             depth++;
         } else if(c=='}'){
-            depth--;
+            if(depth>0) depth--;
             if(depth==0&&obj_start>=0){
-                arr_push(arr.u.a, vstr_n(s+obj_start, i-obj_start+1));
-                obj_start=-1;
+                if(count<JSON_ARR_MAX) arr_push(arr.u.a, vstr_n(s+obj_start, i-obj_start+1));
+                count++; obj_start=-1;
+                if(count>=JSON_ARR_MAX) break;
             }
         }
     }
