@@ -761,6 +761,7 @@ static Value h_http_get(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vstr("");
     const char* url=a[0].u.s->d;
     if(!url_shell_safe(url)){ fprintf(stderr,"[Ori] http_get: URL contains unsafe characters\n"); return vstr(""); }
+    if(strlen(url)>1800){ fprintf(stderr,"[Ori] http_get: URL too long\n"); return vstr(""); }
     char cmd[2048];
 #ifdef _WIN32
     snprintf(cmd,sizeof cmd,"curl -sL --max-time 8 --connect-timeout 5 \"%s\" 2>nul",url);
