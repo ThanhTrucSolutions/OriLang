@@ -29,13 +29,12 @@
 <div id="status">Initialising Ori VM (WebAssembly)...</div>
 <div id="app"></div>
 
-<script type="module">
-import createOriVM from './orivm.js';
-
+<script src="orivm.js"></script>
+<script>
 const COINGECKO_URL =
   'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin&vs_currencies=usd';
 
-let vm, ori_call;
+let vm, ori_dispatch;
 
 // ── Render widget spec ───────────────────────────────────────────────────────
 let editValue = '';
@@ -61,7 +60,7 @@ function render(spec) {
       btn.className = 'ori-btn'; btn.textContent = caption;
       btn.addEventListener('click', () => {
         const a = arg === '@edit' ? editValue : arg;
-        const next = ori_call('dispatch', ev + '\x1f' + a);
+        const next = ori_dispatch(ev, a);
         if (next) render(next);
         if (ev === 'refresh') fetchPrices();
       });
@@ -72,11 +71,11 @@ function render(spec) {
       const span = document.createElement('span'); span.textContent = caption;
       const tog = document.createElement('button'); tog.className = 'toggle'; tog.textContent = '✓';
       tog.addEventListener('click', () => {
-        const next = ori_call('dispatch', tev + '\x1f' + arg); if (next) render(next);
+        const next = ori_dispatch(tev, arg); if (next) render(next);
       });
       const del = document.createElement('button'); del.className = 'del'; del.textContent = '✕';
       del.addEventListener('click', () => {
-        const next = ori_call('dispatch', dev + '\x1f' + arg); if (next) render(next);
+        const next = ori_dispatch(dev, arg); if (next) render(next);
       });
       row.appendChild(tog); row.appendChild(span); row.appendChild(del);
       app.appendChild(row);
@@ -90,11 +89,11 @@ async function fetchPrices() {
   try {
     const r = await fetch(COINGECKO_URL);
     const body = await r.text();
-    const spec = ori_call('dispatch', 'update\x1f' + body);
+    const spec = ori_dispatch('update', body);
     if (spec) render(spec);
     document.getElementById('status').textContent = 'Ready — logic runs in the Ori C VM (WebAssembly)';
   } catch (e) {
-    const spec = ori_call('dispatch', 'update\x1f');
+    const spec = ori_dispatch('update', '');
     if (spec) render(spec);
     document.getElementById('status').textContent = 'Network error — CoinGecko unreachable';
   }
@@ -106,13 +105,14 @@ async function boot() {
   try {
     statusEl.textContent = 'Loading WebAssembly VM…';
     vm = await createOriVM({ print: () => {}, printErr: () => {} });
-    const resp = await fetch('./app.orb');
+    const resp = await fetch('./app.orb', { cache: 'no-store' });
     const buf  = await resp.arrayBuffer();
     const data = new Uint8Array(buf);
     vm.FS.writeFile('/app.orb', data);
     vm.callMain(['/app.orb']);
-    ori_call = (fn, arg) => vm.ccall('ori_call_str', 'string', ['string','string'], [fn, arg]);
-    const initial = ori_call('dispatch', 'init\x1f');
+    // ori_call2 passes two separate string args to the Ori function
+    ori_dispatch = (ev, arg) => vm.ccall('ori_call2', 'string', ['string','string','string'], ['dispatch', ev||'', arg||'']);
+    const initial = ori_dispatch('init', '');
     if (initial) render(initial);
     statusEl.textContent = 'VM ready — fetching live prices…';
     fetchPrices();
