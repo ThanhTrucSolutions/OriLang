@@ -306,7 +306,8 @@
   };
 
   OriVM.prototype.call = function(fname, arg) {
-    if (this.frames.length >= 2000) return "";
+    this.frames = [];
+    this.stack = [];
     var f = this.globals[fname];
     if (!f || f.t !== V_FUNC) return "";
     this.pushFrame(f.v, [str(arg || "")]);
@@ -314,7 +315,8 @@
   };
 
   OriVM.prototype.call2 = function(fname, a1, a2) {
-    if (this.frames.length >= 2000) return "";
+    this.frames = [];
+    this.stack = [];
     var f = this.globals[fname];
     if (!f || f.t !== V_FUNC) return "";
     this.pushFrame(f.v, [str(a1 || ""), str(a2 || "")]);
