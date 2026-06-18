@@ -557,6 +557,7 @@ fold const_str(s) {
         when C_kinds[i] == 3 && C_vals[i] == s { give i }
         i = i + 1
     }
+    when len(C_vals) >= 65535 { print("oric: too many constants (>65535)") }
     push(C_kinds, 3)
     push(C_vals, s)
     give len(C_vals) - 1
