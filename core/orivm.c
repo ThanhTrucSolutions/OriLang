@@ -19,6 +19,12 @@
 #include <errno.h>
 #include <sys/stat.h>
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
 #include <windows.h>
 #include <bcrypt.h>
 #pragma comment(lib, "bcrypt.lib")
@@ -31,6 +37,9 @@
 #include <limits.h>
 #include <dirent.h>
 #include <fnmatch.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 #if defined(__linux__) && !defined(__ANDROID__)
 #  include <sys/random.h>
 #elif defined(__ANDROID__)
@@ -45,6 +54,21 @@
 #endif
 #include "sha256.h"
 #include "chacha20.h"
+
+// ---------------------------------------------------------------------------
+//  Portable TCP socket helpers (used by http_serve)
+// ---------------------------------------------------------------------------
+#ifdef _WIN32
+typedef SOCKET ori_sock_t;
+#define ORI_SOCK_INVALID INVALID_SOCKET
+#define ori_sock_close(s) closesocket(s)
+static void ori_net_init(void){ static int done=0; if(!done){ WSADATA w; WSAStartup(MAKEWORD(2,2),&w); done=1; } }
+#else
+typedef int ori_sock_t;
+#define ORI_SOCK_INVALID (-1)
+#define ori_sock_close(s) close(s)
+static void ori_net_init(void){}
+#endif
 
 static uint8_t* read_all(const char* path, size_t* outN); // fwd
 
@@ -479,9 +503,10 @@ static Value bin_add(Value a, Value b){
 }
 static double need_num(Value v){ if(v.t!=V_NUM) rt_error("arithmetic requires numbers"); return v.u.num; }
 
-static Value run(VM* vm){
+// Run until vm->fp drops to min_fp (0 for normal execution, saved_fp for nested calls).
+static Value run_until(VM* vm, int min_fp){
     uint64_t steps=0;
-    while(vm->fp>0){
+    while(vm->fp>min_fp){
         Frame* fr=&vm->frames[vm->fp-1];
         Func* fn=fr->fn;
         for(;;){
@@ -536,7 +561,7 @@ static Value run(VM* vm){
                     Value res=vm->sp>0?pop(vm):vnil();
                     vm->fp--;
                     free(vm->frames[vm->fp].locals);
-                    if(vm->fp==0) return res;
+                    if(vm->fp<=min_fp) return res;
                     push(vm,res);
                     goto refetch;
                 }
@@ -571,6 +596,7 @@ static Value run(VM* vm){
     }
     return vnil();
 }
+static Value run(VM* vm){ return run_until(vm, 0); }
 
 // ---------------------------------------------------------------------------
 //  Host built-ins
@@ -817,6 +843,126 @@ static Value h_http_get(VM* vm, Value* a, int argc){
 #endif
     return vstr_n(buf,(int)total);
 }
+static Value h_http_post(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_STR) return vstr("");
+    const char* url=a[0].u.s->d;
+    if(!url_shell_safe(url)){ fprintf(stderr,"[Ori] http_post: URL contains unsafe characters\n"); return vstr(""); }
+    if(strlen(url)>1800){ fprintf(stderr,"[Ori] http_post: URL too long\n"); return vstr(""); }
+    const char* body=argc>=2&&a[1].t==V_STR?a[1].u.s->d:"{}";
+    /* write body to temp file to avoid shell-injection */
+    char tmp[512];
+    static int post_seq=0;
+#ifdef _WIN32
+    char td[MAX_PATH]; GetTempPathA(sizeof td,td);
+    snprintf(tmp,sizeof tmp,"%sori_post_%lu_%d.tmp",td,(unsigned long)GetCurrentProcessId(),++post_seq);
+#else
+    snprintf(tmp,sizeof tmp,"/tmp/ori_post_%d_%d.tmp",(int)getpid(),++post_seq);
+#endif
+    FILE* tf=fopen(tmp,"wb"); if(!tf) return vstr("");
+    fwrite(body,1,strlen(body),tf); fclose(tf);
+    char cmd[2600];
+#ifdef _WIN32
+    snprintf(cmd,sizeof cmd,"curl -sL --max-time 8 --connect-timeout 5 -X POST -H \"Content-Type: application/json\" --data-binary @\"%s\" \"%s\" 2>nul",tmp,url);
+    FILE* p=_popen(cmd,"r");
+#else
+    snprintf(cmd,sizeof cmd,"curl -sL --max-time 8 --connect-timeout 5 -X POST -H 'Content-Type: application/json' --data-binary @'%s' '%s' 2>/dev/null",tmp,url);
+    FILE* p=popen(cmd,"r");
+#endif
+    char buf[65536]; size_t total=0,r;
+    if(p){
+        while((r=fread(buf+total,1,sizeof buf-total-1,p))>0){ total+=r; if(total>=sizeof buf-1) break; }
+        buf[total]=0;
+#ifdef _WIN32
+        _pclose(p);
+#else
+        pclose(p);
+#endif
+    } else { buf[0]=0; }
+    remove(tmp);
+    return vstr_n(buf,(int)total);
+}
+
+// Simple single-threaded blocking HTTP server.
+// Calls handler(route, body) for each request where route = "METHOD /path?qs".
+static Value h_http_serve(VM* vm, Value* a, int argc){
+    if(argc<2||a[0].t!=V_NUM||a[1].t!=V_STR) rt_error("http_serve(port, handler_name)");
+    int port=safe_int(a[0].u.num);
+    if(port<1||port>65535) rt_error("http_serve: port out of range (1-65535)");
+    char hname[256]; int hn=a[1].u.s->len;
+    if(hn<1||hn>=255) rt_error("http_serve: handler name too long");
+    memcpy(hname,a[1].u.s->d,hn); hname[hn]=0;
+    Value hfn; if(!g_get(vm,hname,&hfn)||hfn.t!=V_FUNC) rt_error("http_serve: handler function not found");
+    int fn_idx=hfn.u.i;
+    Func* fn=&vm->prog->funcs[fn_idx];
+    if(fn->arity!=2){ char m[128]; snprintf(m,sizeof m,"http_serve: handler '%s' must take 2 args (route, body)",hname); rt_error(m); }
+
+    ori_net_init();
+    ori_sock_t srv=socket(AF_INET,SOCK_STREAM,0);
+    if(srv==ORI_SOCK_INVALID) rt_error("http_serve: socket() failed");
+    int yes=1; setsockopt(srv,SOL_SOCKET,SO_REUSEADDR,(char*)&yes,sizeof(yes));
+    struct sockaddr_in addr; memset(&addr,0,sizeof(addr));
+    addr.sin_family=AF_INET; addr.sin_port=htons((uint16_t)port); addr.sin_addr.s_addr=htonl(INADDR_ANY);
+    if(bind(srv,(struct sockaddr*)&addr,sizeof(addr))!=0){ ori_sock_close(srv); rt_error("http_serve: bind() failed — port may be in use"); }
+    listen(srv,16);
+    fprintf(stderr,"[Ori] http_serve listening on http://localhost:%d\n",port); fflush(stderr);
+
+    static char req_buf[1048576]; /* 1 MB — static to avoid large stack frame */
+    for(;;){
+        ori_sock_t conn=accept(srv,NULL,NULL);
+        if(conn==ORI_SOCK_INVALID) continue;
+        /* 10 s receive/send timeout */
+#ifdef _WIN32
+        DWORD tv_ms=10000;
+        setsockopt(conn,SOL_SOCKET,SO_RCVTIMEO,(char*)&tv_ms,sizeof(tv_ms));
+        setsockopt(conn,SOL_SOCKET,SO_SNDTIMEO,(char*)&tv_ms,sizeof(tv_ms));
+#else
+        struct timeval tv; tv.tv_sec=10; tv.tv_usec=0;
+        setsockopt(conn,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv));
+        setsockopt(conn,SOL_SOCKET,SO_SNDTIMEO,&tv,sizeof(tv));
+#endif
+        /* read until we have complete headers or 1 MB */
+        int total=0;
+        while(total<(int)sizeof(req_buf)-1){
+            int r=(int)recv(conn,req_buf+total,(int)(sizeof(req_buf)-1-total),0);
+            if(r<=0) break; total+=r; req_buf[total]=0;
+            if(strstr(req_buf,"\r\n\r\n")||strstr(req_buf,"\n\n")) break;
+        }
+        req_buf[total]=0;
+        /* parse method and path */
+        char method[16]="GET", path[2048]="/";
+        const char* rp=req_buf;
+        int mi=0; while(*rp&&*rp!=' '&&mi<15) method[mi++]=*rp++; method[mi]=0;
+        if(*rp==' ') rp++;
+        int pi=0; while(*rp&&*rp!=' '&&*rp!='\r'&&*rp!='\n'&&pi<2047) path[pi++]=*rp++; path[pi]=0;
+        /* body = after \r\n\r\n */
+        const char* body="";
+        char* sep=strstr(req_buf,"\r\n\r\n");
+        if(sep) body=sep+4; else { sep=strstr(req_buf,"\n\n"); if(sep) body=sep+2; }
+        /* build route string */
+        char route[2080]; snprintf(route,sizeof route,"%s %s",method,path);
+        fprintf(stderr,"[Ori] %s %s\n",method,path); fflush(stderr);
+        /* call Ori handler: handler(route, body) — isolated via run_until */
+        int saved_fp=vm->fp;
+        Value args[2]; args[0]=vstr(route); args[1]=vstr(body);
+        push_frame(vm,fn_idx,args,2);
+        Value resp=run_until(vm,saved_fp);
+        char* resp_s=val_cstr(resp); size_t resp_len=strlen(resp_s);
+        /* detect content type */
+        const char* ct="application/json";
+        if(resp_len>0&&resp_s[0]=='<') ct="text/html; charset=utf-8";
+        else if(resp_len==0||(resp_s[0]!='{'&&resp_s[0]!='['&&resp_s[0]!='"'&&resp_s[0]!='n'&&resp_s[0]!='t'&&resp_s[0]!='f'&&resp_s[0]!='0')) ct="text/plain; charset=utf-8";
+        /* send response */
+        char hdr[512]; int hlen=snprintf(hdr,sizeof hdr,
+            "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %zu\r\n"
+            "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: Content-Type\r\n"
+            "Connection: close\r\n\r\n",ct,resp_len);
+        send(conn,hdr,hlen,0);
+        if(resp_len>0) send(conn,resp_s,(int)resp_len,0);
+        free(resp_s); ori_sock_close(conn);
+    }
+    ori_sock_close(srv); return vnil();
+}
+
 static Value h_is_dir(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vnum(0);
     struct stat st; if(stat(a[0].u.s->d,&st)!=0) return vnum(0);
@@ -876,13 +1022,13 @@ static void register_hosts(VM* vm){
         "abs","floor","sqrt","max","min","upper","lower",
         "read_file","write_bytes","write_file","argc","argv",
         "env","exists","sh","run","mkdirs","copy","glob","abspath",
-        "is_dir","mtime","sleep_ms","read_bytes_b64","http_get" };
+        "is_dir","mtime","sleep_ms","read_bytes_b64","http_get","http_post","http_serve" };
     static HostFn fns[] = {
         h_say,h_say,h_str,h_num,h_len,h_push,h_pop,h_char_at,h_ord,h_chr,h_substr,h_type,
         h_abs,h_floor,h_sqrt,h_max,h_min,h_upper,h_lower,
         h_read_file,h_write_bytes,h_write_file,h_argc,h_argv,
         h_env,h_exists,h_sh,h_run,h_mkdirs,h_copy,h_glob,h_abspath,
-        h_is_dir,h_mtime,h_sleep_ms,h_read_bytes_b64,h_http_get };
+        h_is_dir,h_mtime,h_sleep_ms,h_read_bytes_b64,h_http_get,h_http_post,h_http_serve };
     int n=(int)(sizeof(names)/sizeof(names[0]));
     vm->hostNames=names; vm->hostFns=fns; vm->hostCount=n;
     for(int i=0;i<n;i++) g_set(vm,names[i],vhost(i));
