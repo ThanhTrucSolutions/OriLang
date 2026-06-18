@@ -518,7 +518,9 @@ static Value run(VM* vm){
                     goto refetch;
                 }
                 case OP_MAKEARRAY: {
-                    int k=ins.arg; Value arr=varr_new();
+                    int k=ins.arg;
+                    if(k<0||k>65535) rt_error("MAKEARRAY arg out of range");
+                    Value arr=varr_new();
                     Value* tmp=xmalloc(sizeof(Value)*(k>0?k:1));
                     for(int i=k-1;i>=0;i--) tmp[i]=pop(vm);
                     for(int i=0;i<k;i++) arr_push(arr.u.a,tmp[i]);
@@ -918,6 +920,7 @@ ORI_EXPORT
 char* ori_call_str(const char* fname, const char* arg){
     Value f;
     if(!g_get(&gvm, fname, &f) || f.t!=V_FUNC) return dupstr("");
+    if(gvm.fp >= 2000) return dupstr("");
     Value a = vstr(arg ? arg : "");
     push_frame(&gvm, f.u.i, &a, 1);
     Value r = run(&gvm);
@@ -930,6 +933,7 @@ ORI_EXPORT
 char* ori_call2(const char* fname, const char* a1, const char* a2){
     Value f;
     if(!g_get(&gvm, fname, &f) || f.t!=V_FUNC) return dupstr("");
+    if(gvm.fp >= 2000) return dupstr("");
     Value args[2]; args[0]=vstr(a1?a1:""); args[1]=vstr(a2?a2:"");
     push_frame(&gvm, f.u.i, args, 2);
     Value r = run(&gvm);
