@@ -349,7 +349,9 @@
       ["mkdirs", function() { return num(0); }],
       ["copy", function() { return num(0); }],
       ["glob", function() { return arr([]); }],
-      ["abspath", function(args) { return args[0] && args[0].t === V_STR ? args[0] : str(""); }]
+      ["abspath", function(args) { return args[0] && args[0].t === V_STR ? args[0] : str(""); }],
+      ["http_get", function() { return str(""); }],
+      ["sleep_ms", function() { return nil(); }]
     ];
     return hosts.map(function(h) { return { name: h[0], fn: h[1] }; });
   }
