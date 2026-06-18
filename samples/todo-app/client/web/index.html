@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Ori Todo</title>
+<style>
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: #0f1116; color: #e6e9f0; }
+#app { width: min(560px, 100%); margin: 0 auto; padding: 28px 20px 60px; }
+h1 { font-size: 2rem; margin: 0 0 20px; font-weight: 800; }
+.add-row { display: flex; gap: 8px; margin-bottom: 18px; }
+.add-row input { flex: 1; padding: 11px 13px; border: 1px solid #2a2e38; border-radius: 8px;
+  background: #181a20; color: #e6e9f0; font: inherit; font-size: 15px; outline: none; }
+.add-row input:focus { border-color: #3078dc; }
+.add-row button { padding: 0 20px; min-height: 44px; border: 0; border-radius: 8px;
+  background: #3078dc; color: #fff; font: inherit; font-weight: 650; cursor: pointer; }
+.filters { display: flex; gap: 6px; margin-bottom: 14px; }
+.filters button { min-height: 34px; padding: 0 14px; border: 1px solid #2a2e38; border-radius: 6px;
+  background: transparent; color: #9aa0aa; font: inherit; font-size: 13px; cursor: pointer; }
+.filters button.active { background: #3078dc; border-color: #3078dc; color: #fff; }
+.list { border: 1px solid #23272f; border-radius: 10px; overflow: hidden; }
+.todo-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+  border-bottom: 1px solid #1a1d24; }
+.todo-item:last-child { border-bottom: 0; }
+.todo-item input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; accent-color: #3078dc; }
+.todo-item .label { flex: 1; font-size: 15px; }
+.todo-item.done .label { color: #6b7280; text-decoration: line-through; }
+.todo-item .del { width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent;
+  color: #6b7280; font-size: 16px; cursor: pointer; }
+.todo-item .del:hover { background: #2a2e38; color: #e06c75; }
+.empty { padding: 32px; text-align: center; color: #6b7280; font-size: 14px; }
+.footer { padding: 12px 16px; font-size: 13px; color: #6b7280; border-top: 1px solid #23272f; }
+.error { background: #2d1a1a; color: #e06c75; border-radius: 8px; padding: 12px 16px;
+  margin-bottom: 12px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Ori Todo</h1>
+  <div class="add-row">
+    <input id="new-todo" type="text" placeholder="What needs to be done?" autocomplete="off"/>
+    <button id="add-btn">Add</button>
+  </div>
+  <div class="filters">
+    <button data-f="all" class="active">All</button>
+    <button data-f="active">Active</button>
+    <button data-f="done">Done</button>
+  </div>
+  <div id="err" style="display:none" class="error"></div>
+  <div id="list-wrap"></div>
+</div>
+<script>
+(function(){
+  var API = "http://localhost:8081/api/todos";
+  var filter = "all";
+
+  function xhr(method, url, body) {
+    try {
+      var r = new XMLHttpRequest();
+      r.open(method, url, false);
+      if (body) r.setRequestHeader("Content-Type","application/json");
+      r.send(body || null);
+      return r.status >= 200 && r.status < 300 ? r.responseText : "";
+    } catch(e){ return ""; }
+  }
+
+  function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  function err(msg) {
+    var el = document.getElementById("err");
+    el.style.display = msg ? "" : "none";
+    el.textContent = msg || "";
+  }
+
+  function load() {
+    err("");
+    try {
+      var resp = xhr("GET", API, null);
+      var all = resp ? JSON.parse(resp) : [];
+      if (!Array.isArray(all)) all = [];
+      var vis = all.filter(function(t){
+        if (filter==="active") return t.done===0;
+        if (filter==="done")   return t.done===1;
+        return true;
+      });
+      render(vis, all);
+    } catch(e) {
+      err("Cannot connect to server at "+API+" — make sure it is running.");
+      document.getElementById("list-wrap").innerHTML = "";
+    }
+  }
+
+  function render(vis, all) {
+    var wrap = document.getElementById("list-wrap");
+    if (!vis.length) {
+      wrap.innerHTML = "<div class=\"empty\">No todos yet — add one above!</div>"; return;
+    }
+    var active=0, done=0;
+    all.forEach(function(t){ if(t.done===1) done++; else active++; });
+    var html = "<div class=\"list\">";
+    vis.forEach(function(t){
+      html += "<div class=\"todo-item"+(t.done===1?" done":"")+"\" data-id=\""+t.id+"\" data-done=\""+t.done+"\">"+
+        "<input type=\"checkbox\""+(t.done===1?" checked":"")+" class=\"chk\"/>"+
+        "<span class=\"label\">"+esc(t.title)+"</span>"+
+        "<button class=\"del\">&#x2715;</button>"+
+        "</div>";
+    });
+    html += "<div class=\"footer\">"+active+" remaining &middot; "+done+" done &middot; "+all.length+" total</div></div>";
+    wrap.innerHTML = html;
+    wrap.querySelectorAll(".chk").forEach(function(chk){
+      chk.addEventListener("change",function(){
+        var item=chk.closest(".todo-item");
+        xhr("PUT",API+"/"+item.dataset.id,JSON.stringify({done:+item.dataset.done===1?0:1}));
+        load();
+      });
+    });
+    wrap.querySelectorAll(".del").forEach(function(btn){
+      btn.addEventListener("click",function(){
+        xhr("DELETE",API+"/"+btn.closest(".todo-item").dataset.id,null);
+        load();
+      });
+    });
+  }
+
+  document.querySelectorAll(".filters button").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      filter=btn.dataset.f;
+      document.querySelectorAll(".filters button").forEach(function(b){ b.classList.remove("active"); });
+      btn.classList.add("active");
+      load();
+    });
+  });
+
+  function add(){
+    var inp=document.getElementById("new-todo");
+    var title=inp.value.trim();
+    if(!title) return;
+    try{
+      var resp=xhr("POST",API,JSON.stringify({title:title}));
+      var obj=resp?JSON.parse(resp):{};
+      if(obj.error){ err("Error: "+obj.error); return; }
+      inp.value=""; load();
+    } catch(e){ err("Failed to add todo."); }
+  }
+
+  document.getElementById("add-btn").addEventListener("click",add);
+  document.getElementById("new-todo").addEventListener("keydown",function(e){ if(e.key==="Enter") add(); });
+  load();
+})();
+</script>
+</body>
+</html>

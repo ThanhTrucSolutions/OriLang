@@ -1,0 +1,4 @@
+name: todo-client
+version: 1.0.0
+entry: main.ori
+ui: widget
