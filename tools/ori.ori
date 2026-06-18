@@ -814,6 +814,48 @@ fold cmd_export proj {
         say("")
     }
 
+    // ── Docker (always generated — self-contained build context) ─────────────
+    hold docker_dir = to_native_sep(jp(build_dir, "docker"))
+    ensure_dir(docker_dir)
+    copy(to_native_sep(jp3(HOME, "core", "orivm.c")),    to_native_sep(jp(docker_dir, "orivm.c")))
+    copy(to_native_sep(jp3(HOME, "core", "chacha20.h")), to_native_sep(jp(docker_dir, "chacha20.h")))
+    copy(to_native_sep(jp3(HOME, "core", "sha256.h")),   to_native_sep(jp(docker_dir, "sha256.h")))
+    copy(to_native_sep(orb), to_native_sep(jp(docker_dir, "app.orb")))
+    hold dockerfile =
+"# " + m[0] + " -- Ori app Docker image\n" +
+"# Build:   docker build -t " + m[0] + " .\n" +
+"# Run:     docker run -p 8081:8081 " + m[0] + "\n" +
+"# Compose: docker compose up\n" +
+"\n" +
+"FROM gcc:12-alpine AS builder\n" +
+"WORKDIR /build\n" +
+"COPY orivm.c chacha20.h sha256.h ./\n" +
+"RUN gcc -O2 -o orivm orivm.c -lm\n" +
+"\n" +
+"FROM alpine:3.19\n" +
+"LABEL org.opencontainers.image.title=\"" + m[0] + "\"\n" +
+"WORKDIR /app\n" +
+"COPY --from=builder /build/orivm ./orivm\n" +
+"COPY app.orb ./app.orb\n" +
+"RUN mkdir -p data \\\n" +
+" && addgroup -S ori \\\n" +
+" && adduser -S ori -G ori \\\n" +
+" && chown -R ori:ori /app\n" +
+"USER ori\n" +
+"EXPOSE 8081\n" +
+"HEALTHCHECK --interval=15s --timeout=5s --start-period=3s --retries=3 \\\n" +
+"  CMD wget -qO- http://localhost:8081/health || exit 1\n" +
+"CMD [\"./orivm\", \"./app.orb\"]\n"
+    write_text(to_native_sep(jp(docker_dir, "Dockerfile")), dockerfile)
+    hold compose =
+"version: \"3.9\"\nservices:\n  app:\n    build: .\n    image: ori-" + m[0] +
+":latest\n    ports:\n      - \"8081:8081\"\n    volumes:\n      - app-data:/app/data\n" +
+"    restart: unless-stopped\nvolumes:\n  app-data:\n"
+    write_text(to_native_sep(jp(docker_dir, "docker-compose.yml")), compose)
+    say("  ok    docker         -> " + docker_dir)
+    say("        cd " + docker_dir + " && docker compose up --build")
+    say("")
+
     say("Export complete.  Artifacts in: " + to_native_sep(jp(proj, "build")))
     give 0
 }
