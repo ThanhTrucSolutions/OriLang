@@ -2,6 +2,8 @@ package ori.app;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
@@ -15,6 +17,8 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 // GENERIC host: it renders whatever the Ori program describes via render() and
 // forwards events to dispatch(event, arg). It contains NO app logic — the todo
@@ -45,7 +49,42 @@ public class MainActivity extends Activity {
     }
 
     private void dispatch(String ev, String arg) {
+        // "refresh" uses native http_get which won't work on Android —
+        // intercept here, fetch asynchronously in Java, then feed body to "update".
+        if (ev.equals("refresh")) {
+            fetchAndUpdate();
+            return;
+        }
         build(OriBridge.call2("dispatch", ev, arg));
+    }
+
+    private void fetchAndUpdate() {
+        // Get the CoinGecko URL from Ori's build_url() function
+        final String url = OriBridge.call("build_url", "");
+        // Fetch in background thread (Android disallows network on main thread)
+        final Handler ui = new Handler(Looper.getMainLooper());
+        new Thread(() -> {
+            String body = httpGet(url);
+            ui.post(() -> build(OriBridge.call2("dispatch", "update", body)));
+        }).start();
+    }
+
+    private static String httpGet(String urlStr) {
+        if (urlStr == null || urlStr.isEmpty()) return "";
+        try {
+            HttpURLConnection c = (HttpURLConnection) new URL(urlStr).openConnection();
+            c.setRequestMethod("GET");
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(8000);
+            c.setRequestProperty("User-Agent", "OriVM/1.0");
+            int code = c.getResponseCode();
+            if (code != 200) return "";
+            InputStream is = c.getInputStream();
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096]; int r;
+            while ((r = is.read(buf)) > 0) bo.write(buf, 0, r);
+            return bo.toString("UTF-8");
+        } catch (Exception e) { return ""; }
     }
 
     private void build(String spec) {

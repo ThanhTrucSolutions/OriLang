@@ -4,6 +4,7 @@
     android:versionCode="1"
     android:versionName="1.0">
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
+  <uses-permission android:name="android.permission.INTERNET" />
   <application android:label="Ori" android:hasCode="true">
     <activity android:name="ori.app.MainActivity" android:exported="true" android:label="Ori">
       <intent-filter>
