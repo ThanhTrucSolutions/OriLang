@@ -354,6 +354,9 @@ fold run_web proj m {
     ensure_dir(web_build)
     copy(to_native_sep(jp(TOOLS_WEB, "orivm.js")),   to_native_sep(jp(web_build, "orivm.js")))
     copy(to_native_sep(jp(TOOLS_WEB, "orivm.wasm")), to_native_sep(jp(web_build, "orivm.wasm")))
+    // Also copy the JS mini-VM (used by the default web template for widget apps)
+    hold mini_vm_src = to_native_sep(jp3(PLATFORMS, "mini", "shared", "ori-mini-vm.js"))
+    when exists(mini_vm_src) { copy(mini_vm_src, to_native_sep(jp(web_build, "ori-mini-vm.js"))) }
     // Copy index.html from project web/ or from platforms/web template
     hold proj_index = to_native_sep(jp3(proj, "web", "index.html"))
     hold dst_index  = to_native_sep(jp(web_build, "index.html"))

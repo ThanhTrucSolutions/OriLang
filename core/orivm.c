@@ -973,6 +973,9 @@ static Value h_http_serve(VM* vm, Value* a, int argc){
         char route[2080]; snprintf(route,sizeof route,"%s %s",method,path);
         fprintf(stderr,"[Ori] %s %s\n",method,path); fflush(stderr);
         /* call Ori handler: handler(route, body) — isolated via run_until */
+        /* Note: route/body Str* are intentionally not freed here — the Ori handler
+           may have captured them into a global (no ref-counting in this VM). The leak
+           is bounded: ~path+body bytes per request (~4 KB typical). */
         int saved_fp=vm->fp;
         Value args[2]; args[0]=vstr(route); args[1]=vstr(body);
         push_frame(vm,fn_idx,args,2);
@@ -1193,14 +1196,31 @@ static Value h_http_delete(VM* vm, Value* a, int argc){
     return vstr_n(buf,(int)total);
 }
 
+/* sanitize a store id: only allow [0-9A-Za-z_-], max 63 chars.
+   Returns 0 if id is safe, -1 if it contains path-traversal chars. */
+static int store_id_safe(Value* v, char* out, int outsz){
+    char tmp[64];
+    if(v->t==V_NUM){ snprintf(tmp,sizeof tmp,"%d",safe_int(v->u.num)); }
+    else if(v->t==V_STR){ snprintf(tmp,sizeof tmp,"%s",v->u.s->d); }
+    else { return -1; }
+    for(int i=0;tmp[i];i++){
+        char c=tmp[i];
+        if(!((c>='0'&&c<='9')||(c>='A'&&c<='Z')||(c>='a'&&c<='z')||c=='_'||c=='-'))
+            return -1;
+    }
+    snprintf(out,outsz,"%s",tmp);
+    return 0;
+}
+
 // store_next_id(dir) — returns next auto-increment ID for a table directory
+#define STORE_SEQ_MAX 2000000000
 static Value h_store_next_id(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vnum(1);
     ori_mkdirs(a[0].u.s->d);
     char path[1024]; snprintf(path,sizeof path,"%s/_seq",a[0].u.s->d);
     int id=1;
-    FILE* f=fopen(path,"r"); if(f){ fscanf(f,"%d",&id); fclose(f); }
-    FILE* w=fopen(path,"w"); if(w){ fprintf(w,"%d",id+1); fclose(w); }
+    FILE* f=fopen(path,"r"); if(f){ fscanf(f,"%d",&id); fclose(f); if(id<1||id>STORE_SEQ_MAX) id=1; }
+    FILE* w=fopen(path,"w"); if(w){ fprintf(w,"%d",id<STORE_SEQ_MAX?id+1:id); fclose(w); }
     return vnum((double)id);
 }
 
@@ -1208,9 +1228,7 @@ static Value h_store_next_id(VM* vm, Value* a, int argc){
 static Value h_store_set(VM* vm, Value* a, int argc){
     if(argc<3||a[0].t!=V_STR||a[2].t!=V_STR) return vnum(0);
     const char* dir=a[0].u.s->d;
-    char id_s[64]; int iid=safe_int(a[1].t==V_NUM?a[1].u.num:0);
-    if(a[1].t==V_STR) snprintf(id_s,sizeof id_s,"%s",a[1].u.s->d);
-    else snprintf(id_s,sizeof id_s,"%d",iid);
+    char id_s[64]; if(store_id_safe(&a[1],id_s,sizeof id_s)<0) return vnum(0);
     ori_mkdirs(dir);
     char path[1024]; snprintf(path,sizeof path,"%s/%s.json",dir,id_s);
     FILE* f=fopen(path,"wb"); if(!f) return vnum(0);
@@ -1220,9 +1238,7 @@ static Value h_store_set(VM* vm, Value* a, int argc){
 // store_get(dir, id) — read a record; returns "" if not found
 static Value h_store_get(VM* vm, Value* a, int argc){
     if(argc<2||a[0].t!=V_STR) return vstr("");
-    char id_s[64]; int iid=safe_int(a[1].t==V_NUM?a[1].u.num:0);
-    if(a[1].t==V_STR) snprintf(id_s,sizeof id_s,"%s",a[1].u.s->d);
-    else snprintf(id_s,sizeof id_s,"%d",iid);
+    char id_s[64]; if(store_id_safe(&a[1],id_s,sizeof id_s)<0) return vstr("");
     char path[1024]; snprintf(path,sizeof path,"%s/%s.json",a[0].u.s->d,id_s);
     FILE* f=fopen(path,"rb"); if(!f) return vstr("");
     fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
@@ -1234,30 +1250,31 @@ static Value h_store_get(VM* vm, Value* a, int argc){
 // store_delete(dir, id) — delete a record; returns 1 if deleted
 static Value h_store_delete(VM* vm, Value* a, int argc){
     if(argc<2||a[0].t!=V_STR) return vnum(0);
-    char id_s[64]; int iid=safe_int(a[1].t==V_NUM?a[1].u.num:0);
-    if(a[1].t==V_STR) snprintf(id_s,sizeof id_s,"%s",a[1].u.s->d);
-    else snprintf(id_s,sizeof id_s,"%d",iid);
+    char id_s[64]; if(store_id_safe(&a[1],id_s,sizeof id_s)<0) return vnum(0);
     char path[1024]; snprintf(path,sizeof path,"%s/%s.json",a[0].u.s->d,id_s);
     return vnum(remove(path)==0?1:0);
 }
 
-// store_list(dir) — returns array of all JSON records in the directory
+// store_list(dir) — returns array of all JSON records (max 10,000 records)
+#define STORE_LIST_MAX 10000
 static Value h_store_list(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return varr_new();
     const char* dir=a[0].u.s->d;
     Value arr=varr_new();
+    int count=0;
 #ifdef _WIN32
     char pat[1024]; snprintf(pat,sizeof pat,"%s\\*.json",dir);
     WIN32_FIND_DATAA fd; HANDLE h=FindFirstFileA(pat,&fd);
     if(h==INVALID_HANDLE_VALUE) return arr;
     do {
+        if(count>=STORE_LIST_MAX) break;
         if(strcmp(fd.cFileName,"_seq.json")==0) continue;
         char path[1024]; snprintf(path,sizeof path,"%s\\%s",dir,fd.cFileName);
         FILE* f=fopen(path,"rb"); if(!f) continue;
         fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
         if(n>0&&n<=1048576){
             char* buf=(char*)xmalloc(n+1); size_t got=fread(buf,1,n,f);
-            buf[got]=0; arr_push(arr.u.a,vstr_n(buf,(int)got)); free(buf);
+            buf[got]=0; arr_push(arr.u.a,vstr_n(buf,(int)got)); free(buf); count++;
         }
         fclose(f);
     } while(FindNextFileA(h,&fd));
@@ -1265,7 +1282,7 @@ static Value h_store_list(VM* vm, Value* a, int argc){
 #else
     DIR* d=opendir(dir); if(!d) return arr;
     struct dirent* en;
-    while((en=readdir(d))!=NULL){
+    while(count<STORE_LIST_MAX&&(en=readdir(d))!=NULL){
         const char* nm=en->d_name;
         int nl=strlen(nm);
         if(nl<6||strcmp(nm+nl-5,".json")!=0) continue;
@@ -1275,7 +1292,7 @@ static Value h_store_list(VM* vm, Value* a, int argc){
         fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
         if(n>0&&n<=1048576){
             char* buf=(char*)xmalloc(n+1); size_t got=fread(buf,1,n,f);
-            buf[got]=0; arr_push(arr.u.a,vstr_n(buf,(int)got)); free(buf);
+            buf[got]=0; arr_push(arr.u.a,vstr_n(buf,(int)got)); free(buf); count++;
         }
         fclose(f);
     }
