@@ -412,6 +412,11 @@ static Value pop(VM* vm){ if(vm->sp<=0) rt_error("stack underflow"); return vm->
 
 static void rt_error(const char* msg){ fprintf(stderr,"[Ori runtime error] %s\n",msg); exit(4); }
 
+static int safe_int(double d){
+    if(d>=2147483647.0) return 2147483647;
+    if(d<=-2147483648.0) return -2147483648;
+    return (int)d;
+}
 static int check_index(Value idx, int count){
     if(idx.t!=V_NUM) rt_error("index must be a number");
     int i=(int)idx.u.num;
@@ -431,6 +436,7 @@ static void push_frame(VM* vm, int fnIndex, Value* args, int argc){
 
 static void do_call(VM* vm, int argc){
     if(vm->fp >= 2000) rt_error("stack overflow (call depth exceeded 2000)");
+    if(argc<0||argc>65535) rt_error("bad call: argc out of range");
     Value* args=xmalloc(sizeof(Value)*(argc>0?argc:1));
     for(int i=argc-1;i>=0;i--) args[i]=pop(vm);
     Value callee=pop(vm);
@@ -497,9 +503,11 @@ static Value run(VM* vm){
                 case OP_LE: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vbool(a<=b)); break; }
                 case OP_GE: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vbool(a>=b)); break; }
                 case OP_NOT:{ Value a=pop(vm); push(vm,vbool(!is_truthy(a))); break; }
-                case OP_JMP: fr->ip=ins.arg; break;
-                case OP_JMPIFFALSE: { Value v=pop(vm); if(!is_truthy(v)) fr->ip=ins.arg; break; }
-                case OP_JMPIFTRUE:  { Value v=pop(vm); if(is_truthy(v))  fr->ip=ins.arg; break; }
+                case OP_JMP:
+                    if(ins.arg<0||ins.arg>fn->codeCount) rt_error("jump target out of range");
+                    fr->ip=ins.arg; break;
+                case OP_JMPIFFALSE: { Value v=pop(vm); if(!is_truthy(v)){ if(ins.arg<0||ins.arg>fn->codeCount) rt_error("jump target out of range"); fr->ip=ins.arg; } break; }
+                case OP_JMPIFTRUE:  { Value v=pop(vm); if(is_truthy(v)) { if(ins.arg<0||ins.arg>fn->codeCount) rt_error("jump target out of range"); fr->ip=ins.arg; } break; }
                 case OP_CALL: do_call(vm,ins.arg); goto refetch;
                 case OP_RET: {
                     Value res=vm->sp>0?pop(vm):vnil();
@@ -568,12 +576,12 @@ static Value h_len(VM* vm, Value* a, int argc){
 }
 static Value h_push(VM* vm, Value* a, int argc){ if(argc<2||a[0].t!=V_ARR) rt_error("push(array,value)"); arr_push(a[0].u.a,a[1]); return vnum(a[0].u.a->len); }
 static Value h_pop(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_ARR||a[0].u.a->len==0) rt_error("pop(array)"); return a[0].u.a->it[--a[0].u.a->len]; }
-static Value h_char_at(VM* vm, Value* a, int argc){ Str* s=argstr(a,argc,0); int i=(int)argnum(a,argc,1); if(i<0||i>=s->len) return vstr(""); return vstr_n(s->d+i,1); }
+static Value h_char_at(VM* vm, Value* a, int argc){ Str* s=argstr(a,argc,0); int i=safe_int(argnum(a,argc,1)); if(i<0||i>=s->len) return vstr(""); return vstr_n(s->d+i,1); }
 static Value h_ord(VM* vm, Value* a, int argc){ Str* s=argstr(a,argc,0); return vnum(s->len==0?-1:(unsigned char)s->d[0]); }
-static Value h_chr(VM* vm, Value* a, int argc){ char c=(char)(int)argnum(a,argc,0); return vstr_n(&c,1); }
+static Value h_chr(VM* vm, Value* a, int argc){ char c=(char)(safe_int(argnum(a,argc,0))&0xFF); return vstr_n(&c,1); }
 static Value h_substr(VM* vm, Value* a, int argc){
-    Str* s=argstr(a,argc,0); int start=(int)argnum(a,argc,1);
-    int count=argc>2?(int)argnum(a,argc,2):s->len-start;
+    Str* s=argstr(a,argc,0); int start=safe_int(argnum(a,argc,1));
+    int count=argc>2?safe_int(argnum(a,argc,2)):s->len-start;
     if(start<0)start=0; if(start>s->len)start=s->len; if(count<0)count=0; if(count>s->len-start)count=s->len-start;
     return vstr_n(s->d+start,count);
 }
@@ -786,7 +794,7 @@ static Value h_mtime(VM* vm, Value* a, int argc){
 #endif
 }
 static Value h_sleep_ms(VM* vm, Value* a, int argc){
-    int ms=argc>0&&a[0].t==V_NUM?(int)a[0].u.num:0;
+    int ms=argc>0&&a[0].t==V_NUM?safe_int(a[0].u.num):0;
 #ifdef _WIN32
     Sleep((DWORD)(ms<0?0:ms));
 #else
