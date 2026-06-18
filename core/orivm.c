@@ -590,8 +590,8 @@ static Value h_str(VM* vm, Value* a, int argc){ if(argc==0) return vstr(""); cha
 static Value h_num(VM* vm, Value* a, int argc){
     if(argc==0) return vnum(0);
     if(a[0].t==V_NUM) return a[0];
-    if(a[0].t==V_STR){ char* e; double d=strtod(a[0].u.s->d,&e); if(e!=a[0].u.s->d) return vnum(d); }
-    return vnil();
+    if(a[0].t==V_STR){ char* e; double d=strtod(a[0].u.s->d,&e); if(e!=a[0].u.s->d && isfinite(d)) return vnum(d); }
+    return vnum(0);
 }
 static Value h_len(VM* vm, Value* a, int argc){
     if(argc==0) rt_error("len() expects an argument");
@@ -615,9 +615,9 @@ static Value h_type(VM* vm, Value* a, int argc){
     switch(a[0].t){ case V_NIL:return vstr("nil"); case V_NUM:return vstr("number"); case V_BOOL:return vstr("bool");
         case V_STR:return vstr("string"); case V_ARR:return vstr("array"); default:return vstr("function"); }
 }
-static Value h_abs(VM* vm, Value* a, int argc){ return vnum(fabs(argnum(a,argc,0))); }
-static Value h_floor(VM* vm, Value* a, int argc){ return vnum(floor(argnum(a,argc,0))); }
-static Value h_sqrt(VM* vm, Value* a, int argc){ return vnum(sqrt(argnum(a,argc,0))); }
+static Value h_abs(VM* vm, Value* a, int argc){ double r=fabs(argnum(a,argc,0)); check_finite(r); return vnum(r); }
+static Value h_floor(VM* vm, Value* a, int argc){ double r=floor(argnum(a,argc,0)); check_finite(r); return vnum(r); }
+static Value h_sqrt(VM* vm, Value* a, int argc){ double r=sqrt(argnum(a,argc,0)); check_finite(r); return vnum(r); }
 static Value h_max(VM* vm, Value* a, int argc){ if(argc==0)return vnil(); double m=argnum(a,argc,0); for(int i=1;i<argc;i++){double x=argnum(a,argc,i); if(x>m)m=x;} return vnum(m); }
 static Value h_min(VM* vm, Value* a, int argc){ if(argc==0)return vnil(); double m=argnum(a,argc,0); for(int i=1;i<argc;i++){double x=argnum(a,argc,i); if(x<m)m=x;} return vnum(m); }
 static Value h_upper(VM* vm, Value* a, int argc){ Str* s=argstr(a,argc,0); Value v=vstr_n(s->d,s->len); for(int i=0;i<v.u.s->len;i++){char c=v.u.s->d[i]; if(c>='a'&&c<='z')v.u.s->d[i]=c-32;} return v; }
@@ -629,8 +629,8 @@ static Value h_read_file(VM* vm, Value* a, int argc){
     FILE* f=fopen(path->d,"rb"); if(!f){ rt_error("read_file: cannot open file"); }
     fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
     if(n<0||n>64*1024*1024){ fclose(f); rt_error("read_file: file unseekable or too large"); }
-    char* buf=xmalloc((size_t)n+1); size_t got=fread(buf,1,(size_t)n,f); (void)got; buf[n]=0; fclose(f);
-    Value v=vstr_n(buf,(int)n); free(buf); return v;
+    char* buf=xmalloc((size_t)n+1); size_t got=fread(buf,1,(size_t)n,f); buf[got]=0; fclose(f);
+    Value v=vstr_n(buf,(int)got); free(buf); return v;
 }
 static Value h_write_bytes(VM* vm, Value* a, int argc){
     Str* path=argstr(a,argc,0);

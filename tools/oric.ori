@@ -839,7 +839,7 @@ fold compile_program(prog) {
 // ---------------------------------------------------------------------------
 //  Serialize to a .orb byte buffer
 // ---------------------------------------------------------------------------
-fold emit_u8(buf, b) { push(buf, b % 256) }
+fold emit_u8(buf, b) { push(buf, (b % 256 + 256) % 256) }
 
 // Emit 8 bytes of an IEEE 754 double (little-endian) using pure Ori arithmetic.
 // The Ori tokenizer only handles integer/decimal literals, so all constants here
