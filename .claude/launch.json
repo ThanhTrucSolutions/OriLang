@@ -6,6 +6,18 @@
       "runtimeExecutable": "D:\\ThanhTrucSolutions\\Ori\\ori.exe",
       "runtimeArgs": ["run", "todo"],
       "port": 5151
+    },
+    {
+      "name": "ori-web-crypto",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5152", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\web\\build\\web"],
+      "port": 5152
+    },
+    {
+      "name": "ori-web-stocks",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5153", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\stocks\\build\\web"],
+      "port": 5153
     }
   ]
 }
