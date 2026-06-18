@@ -86,6 +86,7 @@ static Value varr_new(){
     Value v; v.t=V_ARR; v.u.a=a; return v;
 }
 static void arr_push(Arr* a, Value v){
+    if(a->len>=0x400000) rt_error("array too large (>4M elements; 64MB limit)");
     if(a->len>=a->cap){ a->cap*=2; a->it=xrealloc(a->it,sizeof(Value)*a->cap); }
     a->it[a->len++]=v;
 }
@@ -112,7 +113,7 @@ static int val_eq(Value a, Value b){
 // ---- string builder ----
 typedef struct { char* d; int len, cap; } Sb;
 static void sb_init(Sb* b){ b->cap=64; b->len=0; b->d=xmalloc(b->cap); b->d[0]=0; }
-static void sb_putc(Sb* b, char c){ if(b->len+1>=b->cap){ b->cap*=2; b->d=xrealloc(b->d,b->cap);} b->d[b->len++]=c; b->d[b->len]=0; }
+static void sb_putc(Sb* b, char c){ if(b->len>=0x3FFFFF0) rt_error("string too large (>64MB limit)"); if(b->len+1>=b->cap){ b->cap*=2; b->d=xrealloc(b->d,b->cap);} b->d[b->len++]=c; b->d[b->len]=0; }
 static void sb_put(Sb* b, const char* s, int n){ for(int i=0;i<n;i++) sb_putc(b,s[i]); }
 static void sb_puts(Sb* b, const char* s){ sb_put(b,s,(int)strlen(s)); }
 
@@ -405,6 +406,7 @@ static int g_get(VM* vm, const char* name, Value* out){
     return 0;
 }
 static void push(VM* vm, Value v){
+    if(vm->sp>=0x100000) rt_error("value stack overflow (>1M entries; 16MB limit)");
     if(vm->sp>=vm->stackCap){ vm->stackCap*=2; vm->stack=xrealloc(vm->stack,sizeof(Value)*vm->stackCap); }
     vm->stack[vm->sp++]=v;
 }
@@ -419,7 +421,7 @@ static int safe_int(double d){
 }
 static int check_index(Value idx, int count){
     if(idx.t!=V_NUM) rt_error("index must be a number");
-    int i=(int)idx.u.num;
+    int i=safe_int(idx.u.num);
     if(i<0||i>=count){ char m[64]; snprintf(m,sizeof m,"index %d out of range (0..%d)",i,count-1); rt_error(m); }
     return i;
 }
@@ -642,6 +644,7 @@ static Value h_run(VM* vm, Value* a, int argc){
 #else
     if(argc<2||a[0].t!=V_STR||a[1].t!=V_ARR) return vnum(-1);
     Arr* ar=a[1].u.a;
+    if(ar->len<0||ar->len>65535) rt_error("run: too many arguments (>65535)");
     char** av=xmalloc(sizeof(char*)*(ar->len+2));
     av[0]=a[0].u.s->d;
     for(int i=0;i<ar->len;i++) av[i+1]=(ar->it[i].t==V_STR)?ar->it[i].u.s->d:"";
