@@ -20,6 +20,8 @@
 #include <sys/stat.h>
 #ifdef _WIN32
 #include <windows.h>
+#include <bcrypt.h>
+#pragma comment(lib, "bcrypt.lib")
 #include <process.h>
 #include <direct.h>
 #include <io.h>
@@ -29,6 +31,9 @@
 #include <limits.h>
 #include <dirent.h>
 #include <fnmatch.h>
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <sys/random.h>
+#endif
 #ifndef __ANDROID__
 #include <glob.h>
 #endif
@@ -324,11 +329,19 @@ static uint8_t* serialize_payload(Program* pr, const uint8_t perm[256], uint32_t
 }
 
 static uint32_t mix_seed(){
-    uint32_t s=(uint32_t)time(NULL);
-    s ^= (uint32_t)clock()*2654435761u;
-    s ^= (uint32_t)(uintptr_t)&s;
-    s ^= s<<13; s^=s>>17; s^=s<<5;
-    if(s==0) s=0x9E3779B9u;
+    uint32_t s=0;
+#if defined(_WIN32)
+    BCryptGenRandom(NULL,(PUCHAR)&s,sizeof(s),BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+#elif defined(__linux__) || defined(__APPLE__)
+    int _gr=getrandom(&s,sizeof(s),0); (void)_gr;
+#endif
+    if(s==0){
+        s=(uint32_t)time(NULL);
+        s ^= (uint32_t)clock()*2654435761u;
+        s ^= (uint32_t)(uintptr_t)&s;
+        s ^= s<<13; s^=s>>17; s^=s<<5;
+        if(s==0) s=0x9E3779B9u;
+    }
     return s;
 }
 static void fill_rand(uint8_t* p, int n, uint32_t* st){
@@ -398,6 +411,7 @@ static VM gvm;   // the persistent VM instance (kept alive for web event callbac
 
 static void g_set(VM* vm, const char* name, Value v){
     for(int i=0;i<vm->gcount;i++) if(strcmp(vm->globals[i].name,name)==0){ vm->globals[i].v=v; return; }
+    if(vm->gcount>=65535) rt_error("global variable limit exceeded (>65535)");
     if(vm->gcount>=vm->gcap){ vm->gcap=vm->gcap?vm->gcap*2:32; vm->globals=xrealloc(vm->globals,sizeof(GVar)*vm->gcap); }
     vm->globals[vm->gcount].name=dupstr(name); vm->globals[vm->gcount].v=v; vm->gcount++;
 }
@@ -632,8 +646,10 @@ static Value h_argv(VM* vm, Value* a, int argc){ int i=(int)argnum(a,argc,0); if
 // ---- OS / build host functions (so the toolchain can be written in Ori) ----
 static Value h_env(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_STR) return vstr(""); char* e=getenv(a[0].u.s->d); return vstr(e?e:""); }
 static Value h_exists(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_STR) return vnum(0); struct stat st; return vnum(stat(a[0].u.s->d,&st)==0?1:0); }
+/* DANGER: bare system() — never expose in server or networked Ori runtime */
 static Value h_sh(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vnum(-1);
+    if(a[0].u.s->len > 65535) rt_error("sh: command too long (>64KB)");
 #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
     return vnum(-1);
 #else
