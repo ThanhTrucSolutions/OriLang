@@ -101,7 +101,13 @@ fold is_space(c) {
     give c == " " || c == chr(9) || c == chr(10) || c == chr(13)
 }
 
+hold MAX_TOKENS = 500000
+
 fold emit_tok(toks, kind, text, n) {
+    when len(toks) >= MAX_TOKENS {
+        say("oric: too many tokens (>" + str(MAX_TOKENS) + ") — source file may be machine-generated or malformed")
+        give toks
+    }
     push(toks, [kind, text, n])
     LAST_KIND = kind
     LAST_TEXT = text
@@ -970,9 +976,13 @@ fold serialize() {
 //  Main
 // ---------------------------------------------------------------------------
 hold src = read_file(argv(0))
-when len(src) > 4000000 { print("oric: source file too large (>4MB)") }
-hold prog = parse(src)
-compile_program(prog)
-hold bytes = serialize()
-write_bytes(argv(1), bytes)
-say("oric.ori: compiled " + argv(0) + " -> " + argv(1) + " (" + str(len(bytes)) + " bytes .orb, " + str(len(F_names)) + " functions)")
+when len(src) > 4000000 {
+    say("oric: source file too large (>4MB) -- aborting")
+}
+when len(src) > 0 && len(src) <= 4000000 {
+    hold prog = parse(src)
+    compile_program(prog)
+    hold bytes = serialize()
+    write_bytes(argv(1), bytes)
+    say("oric.ori: compiled " + argv(0) + " -> " + argv(1) + " (" + str(len(bytes)) + " bytes .orb, " + str(len(F_names)) + " functions)")
+}
