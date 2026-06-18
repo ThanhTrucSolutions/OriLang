@@ -1,0 +1,220 @@
+// Todo Client App — written in pure Ori
+// Runs on: Web (browser), Android, Windows (Win32 GUI)
+// All use the same widget model: render() + dispatch(event, arg)
+//
+// Backend: http://localhost:8081/api/todos
+// Compile: orivm oric.orb client/main.ori client/main.orb
+
+hold API_BASE = "http://localhost:8081/api/todos"
+
+// ─── State ───────────────────────────────────────────────────────────────────
+
+hold todos = []       // array of JSON strings, each = one todo record
+hold loading = 1      // 1 = loading, 0 = ready
+hold error_msg = ""   // last error
+hold input_text = ""  // current text in the input field
+hold filter = "all"   // "all" | "active" | "done"
+
+// ─── String utilities ────────────────────────────────────────────────────────
+
+fold str_starts_with(s, prefix) {
+  hold plen = len(prefix)
+  when len(s) < plen { give 0 }
+  hold i = 0
+  hold ok = 1
+  loop i < plen {
+    when char_at(s, i) != char_at(prefix, i) { ok = 0  i = plen }
+    else { i = i + 1 }
+  }
+  give ok
+}
+
+// ─── HTTP helpers ─────────────────────────────────────────────────────────────
+
+fold api_get_all() {
+  hold resp = http_get(API_BASE)
+  when len(resp) == 0 { give [] }
+  when str_starts_with(resp, "[") { give json_parse_arr(resp) }
+  give []
+}
+
+fold api_create(title) {
+  hold body = "{\"title\":\"" + json_escape(title) + "\"}"
+  give http_post(API_BASE, body)
+}
+
+fold api_toggle(id, done_val) {
+  hold url = API_BASE + "/" + str(id)
+  hold body = "{\"done\":" + str(done_val) + "}"
+  give http_put(url, body)
+}
+
+fold api_delete(id) {
+  hold url = API_BASE + "/" + str(id)
+  give http_delete(url)
+}
+
+// ─── Todo item renderer ───────────────────────────────────────────────────────
+
+fold render_todo(todo_json) {
+  hold id = json_get_num(todo_json, "id")
+  hold title = json_get_str(todo_json, "title")
+  hold done = json_get_num(todo_json, "done")
+  hold done_class = ""
+  when done == 1 { done_class = " done" }
+  hold checked = ""
+  when done == 1 { checked = " checked" }
+  give "<item class=\"todo-item" + done_class + "\" id=\"todo-" + str(id) + "\">" +
+       "<toggle ev=\"toggle\" arg=\"" + str(id) + ":" + str(done) + "\"" + checked + "></toggle>" +
+       "<label>" + title + "</label>" +
+       "<delete ev=\"delete\" arg=\"" + str(id) + "\">✕</delete>" +
+       "</item>"
+}
+
+// ─── Filter todos ─────────────────────────────────────────────────────────────
+
+fold filter_todos(items) {
+  when filter == "all" { give items }
+  hold result = []
+  hold n = len(items)
+  hold i = 0
+  loop i < n {
+    hold todo = items[i]
+    hold done = json_get_num(todo, "done")
+    when filter == "active" {
+      when done == 0 { push(result, todo) }
+    }
+    when filter == "done" {
+      when done == 1 { push(result, todo) }
+    }
+    i = i + 1
+  }
+  give result
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+
+fold render() {
+  hold s = "<app>"
+  s = s + "<h1>Ori Todo</h1>"
+
+  // Input bar
+  s = s + "<addbar>"
+  s = s + "<input ev=\"input\" value=\"" + json_escape(input_text) + "\" placeholder=\"What needs to be done?\">"
+  s = s + "<addbutton ev=\"add\">Add</addbutton>"
+  s = s + "</addbar>"
+
+  when loading == 1 {
+    s = s + "<status>Loading...</status>"
+  } else {
+    when len(error_msg) > 0 {
+      s = s + "<error>" + error_msg + "</error>"
+    }
+
+    // Filter bar
+    s = s + "<filters>"
+    hold f_all = ""
+    hold f_active = ""
+    hold f_done = ""
+    when filter == "all" { f_all = " active" }
+    when filter == "active" { f_active = " active" }
+    when filter == "done" { f_done = " active" }
+    s = s + "<fbutton ev=\"filter\" arg=\"all\" class=\"" + f_all + "\">All</fbutton>"
+    s = s + "<fbutton ev=\"filter\" arg=\"active\" class=\"" + f_active + "\">Active</fbutton>"
+    s = s + "<fbutton ev=\"filter\" arg=\"done\" class=\"" + f_done + "\">Done</fbutton>"
+    s = s + "</filters>"
+
+    // Todo list
+    hold visible = filter_todos(todos)
+    hold n = len(visible)
+    s = s + "<list>"
+    when n == 0 {
+      s = s + "<empty>No todos yet. Add one above!</empty>"
+    } else {
+      hold i = 0
+      loop i < n {
+        s = s + render_todo(visible[i])
+        i = i + 1
+      }
+    }
+    s = s + "</list>"
+
+    // Footer stats
+    hold total = len(todos)
+    hold done_count = 0
+    hold j = 0
+    loop j < total {
+      when json_get_num(todos[j], "done") == 1 { done_count = done_count + 1 }
+      j = j + 1
+    }
+    hold active_count = total - done_count
+    s = s + "<footer>" + str(active_count) + " remaining · " + str(done_count) + " done · " + str(total) + " total</footer>"
+  }
+
+  s = s + "</app>"
+  give s
+}
+
+// ─── Dispatch ────────────────────────────────────────────────────────────────
+
+fold dispatch(ev, arg) {
+  when ev == "load" {
+    loading = 1
+    hold fetched = api_get_all()
+    todos = fetched
+    loading = 0
+    error_msg = ""
+    give render()
+  }
+
+  when ev == "input" {
+    input_text = arg
+    give render()
+  }
+
+  when ev == "add" {
+    hold title = input_text
+    when len(title) == 0 { give render() }
+    hold resp = api_create(title)
+    when str_starts_with(resp, "{\"error") {
+      error_msg = "Failed to add todo"
+      give render()
+    }
+    input_text = ""
+    todos = api_get_all()
+    error_msg = ""
+    give render()
+  }
+
+  when ev == "toggle" {
+    // arg = "id:done_val"
+    hold colon = 0
+    hold n = len(arg)
+    hold i = 0
+    loop i < n {
+      when char_at(arg, i) == ":" { colon = i  i = n }
+      else { i = i + 1 }
+    }
+    hold id = num(substr(arg, 0, colon))
+    hold old_done = num(substr(arg, colon + 1, n - colon - 1))
+    hold new_done = 1
+    when old_done == 1 { new_done = 0 }
+    api_toggle(id, new_done)
+    todos = api_get_all()
+    give render()
+  }
+
+  when ev == "delete" {
+    hold id = num(arg)
+    api_delete(id)
+    todos = api_get_all()
+    give render()
+  }
+
+  when ev == "filter" {
+    filter = arg
+    give render()
+  }
+
+  give render()
+}

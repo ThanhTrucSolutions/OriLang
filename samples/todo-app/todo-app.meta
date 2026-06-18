@@ -1,0 +1,22 @@
+name: todo-app
+version: 1.0.0
+description: Full-stack Todo app — REST API backend + multi-platform GUI client, all in Ori
+
+# Backend: console REST API server (file store or MySQL via ORM)
+server:
+  entry: server/main.ori
+  compile: orivm oric.orb server/main.ori server/main.orb
+  run: orivm server/main.orb
+  port: 8081
+
+# GUI client: shared widget model, runs on Web / Android / Windows
+client:
+  entry: client/main.ori
+  compile: orivm oric.orb client/main.ori client/main.orb
+  platforms:
+    - web
+    - android
+    - win
+
+# MySQL support (optional — rebuild orivm with -DORI_MYSQL)
+# Edit server/main.ori and set DB_MODE = "mysql"
