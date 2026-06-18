@@ -1,7 +1,0 @@
-name: line-mini-app
-version: 1.0.0
-entry: ori/main.ori
-platform: line-mini-app
-
-# `ori build samples/line-mini-app` creates build/line-mini-app.
-dependencies:

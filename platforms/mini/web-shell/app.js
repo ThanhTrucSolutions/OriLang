@@ -17,7 +17,15 @@
   }
 
   function action(ev, arg) {
-    draw(runtime.dispatch(ev, arg));
+    try {
+      draw(runtime.dispatch(ev, arg));
+    } catch(e) {
+      console.error("[Ori] dispatch error:", e.message);
+      var errDiv = document.createElement("div");
+      errDiv.className = "text";
+      errDiv.textContent = "Runtime error: " + e.message;
+      root.appendChild(errDiv);
+    }
   }
 
   function draw(nodes) {

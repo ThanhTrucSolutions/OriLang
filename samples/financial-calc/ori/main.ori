@@ -1,0 +1,305 @@
+// OriCalc — Financial Calculator in Ori
+//
+// Universal UI model: render() + dispatch(ev, arg)
+// Runs on every Ori host without modification:
+//   Mini-programs (WeChat, Alipay, Zalo, Telegram, LINE, Grab, Momo)
+//   Chrome extension, desktop (Win/Mac/Linux), web (WASM), Android, iOS
+//
+// Three calculation modes:
+//   loan    — monthly payment via compound interest formula
+//   save    — future value of regular deposits
+//   invest  — compound growth of a lump sum
+//
+// Input format for each mode (space-separated in the edit field):
+//   loan    — "principal rate_pct months"       e.g. "200000 6.5 360"
+//   save    — "monthly_deposit rate_pct years"  e.g. "500 4 10"
+//   invest  — "principal rate_pct years"         e.g. "10000 8 20"
+//
+// Dispatch events:
+//   mode_loan, mode_save, mode_invest — switch active mode, clear result
+//   calc_loan   — compute monthly payment
+//   calc_save   — compute future savings value
+//   calc_invest — compute future investment value
+//   del_hist    — remove one history entry by index
+
+// ── App state ─────────────────────────────────────────────────────────────────
+
+hold mode    = "loan"
+hold result  = ""
+hold history = []
+
+// ── Helper: iterative integer power (base^n), n capped at 600 ────────────────
+// Keeps instruction count well within the 10M limit (600 iters × ~5 ops = 3000).
+
+fold pow_iter base n {
+    when n < 0 { give 1 }
+    hold cap = n
+    when cap > 600 { cap = 600 }
+    hold acc = 1
+    hold i   = 0
+    loop i < cap {
+        when acc > 1000000000000 { give acc }
+        acc = acc * base
+        i   = i + 1
+    }
+    give acc
+}
+
+// ── Helper: format number to 2 decimal places ────────────────────────────────
+// Strategy: multiply by 100, floor, then re-insert the decimal point.
+// Avoids floating-point string formatting quirks.
+
+fold fmt2 n {
+    hold neg = 0
+    when n < 0 {
+        neg = 1
+        n   = 0 - n
+    }
+    hold cents  = floor(n * 100 + 0.5)
+    hold dollars = floor(cents / 100)
+    hold frac    = cents - dollars * 100
+    hold fs = str(frac)
+    when frac < 10 { fs = "0" + fs }
+    hold out = str(dollars) + "." + fs
+    when neg == 1 { out = "-" + out }
+    give out
+}
+
+// ── Helper: format large number with K / M suffix ────────────────────────────
+
+fold fmt_big n {
+    hold neg = 0
+    when n < 0 {
+        neg = 1
+        n   = 0 - n
+    }
+    hold out = ""
+    when n >= 1000000 {
+        out = fmt2(n / 1000000) + "M"
+    } else when n >= 1000 {
+        out = fmt2(n / 1000) + "K"
+    } else {
+        out = fmt2(n)
+    }
+    when neg == 1 { out = "-" + out }
+    give out
+}
+
+// ── Helper: extract nth space-separated token as a number (0-indexed) ─────────
+// Returns 0 when the token is missing or non-numeric.
+
+fold parse_nth s n {
+    hold tok   = 0
+    hold i     = 0
+    hold start = 0
+    hold found = 0
+    // skip leading spaces
+    loop start < len(s) && char_at(s, start) == " " {
+        start = start + 1
+    }
+    i = start
+    loop i <= len(s) {
+        hold at_end = 0
+        when i == len(s) { at_end = 1 }
+        hold at_sp = 0
+        when i < len(s) && char_at(s, i) == " " { at_sp = 1 }
+        when at_end == 1 || at_sp == 1 {
+            when i > start {
+                when tok == n {
+                    found = 1
+                    give num(substr(s, start, i - start))
+                }
+                tok = tok + 1
+            }
+            start = i + 1
+        }
+        i = i + 1
+    }
+    give 0
+}
+
+// ── Loan calculator ──────────────────────────────────────────────────────────
+// Formula: r = rate/100/12
+//          factor = (1+r)^months
+//          monthly = principal * r * factor / (factor - 1)
+// Edge cases:
+//   principal <= 0 or months <= 0  → error
+//   rate <= 0                      → simple division (interest-free)
+
+fold calc_loan_val principal rate months {
+    when principal <= 0 || months <= 0 {
+        give "Error: principal and months must be positive"
+    }
+    when rate <= 0 {
+        hold simple = fmt2(principal / months)
+        give "Interest-free: " + simple + "/mo  (total " + fmt_big(principal) + ")"
+    }
+    hold r      = rate / 100 / 12
+    hold factor = pow_iter(1 + r, months)
+    hold denom  = factor - 1
+    when denom <= 0 {
+        give "Error: calculation overflow (try smaller values)"
+    }
+    hold monthly = principal * r * factor / denom
+    hold total   = monthly * months
+    hold interest = total - principal
+    give "Monthly: " + fmt2(monthly) + "  |  Total: " + fmt_big(total) + "  |  Interest: " + fmt_big(interest)
+}
+
+// ── Savings calculator ───────────────────────────────────────────────────────
+// Formula: r = rate/100/12
+//          n = years * 12
+//          factor = (1+r)^n
+//          FV = monthly * (factor - 1) / r
+// Edge cases:
+//   monthly <= 0 or years <= 0  → error
+//   rate <= 0                   → simple multiply
+
+fold calc_save_val monthly rate years {
+    when monthly <= 0 || years <= 0 {
+        give "Error: deposit and years must be positive"
+    }
+    when rate <= 0 {
+        hold simple = monthly * years * 12
+        give "No interest: " + fmt_big(simple) + "  (" + str(years * 12) + " deposits)"
+    }
+    hold r      = rate / 100 / 12
+    hold n      = years * 12
+    hold factor = pow_iter(1 + r, n)
+    hold denom  = r
+    when denom <= 0 {
+        give "Error: calculation overflow (try smaller values)"
+    }
+    hold fv      = monthly * (factor - 1) / denom
+    hold invested = monthly * n
+    hold gained   = fv - invested
+    give "Future value: " + fmt_big(fv) + "  |  Invested: " + fmt_big(invested) + "  |  Gains: " + fmt_big(gained)
+}
+
+// ── Investment calculator ────────────────────────────────────────────────────
+// Formula: factor = (1 + rate/100)^years
+//          FV = principal * factor
+// Edge cases:
+//   principal <= 0 or years <= 0  → error
+//   rate <= 0                     → principal unchanged
+
+fold calc_invest_val principal rate years {
+    when principal <= 0 || years <= 0 {
+        give "Error: principal and years must be positive"
+    }
+    when rate <= 0 {
+        give "No growth: " + fmt_big(principal) + "  (0% return)"
+    }
+    hold annual = rate / 100
+    hold factor = pow_iter(1 + annual, years)
+    hold fv     = principal * factor
+    hold gained = fv - principal
+    give "Future value: " + fmt_big(fv) + "  |  Gains: " + fmt_big(gained) + "  |  x" + fmt2(factor)
+}
+
+// ── Push to history, capped at 8 entries ─────────────────────────────────────
+
+fold push_hist entry {
+    hold tmp = []
+    push(tmp, entry)
+    hold i = 0
+    loop i < len(history) && len(tmp) < 8 {
+        push(tmp, history[i])
+        i = i + 1
+    }
+    history = tmp
+}
+
+// ── render() — build widget spec string ──────────────────────────────────────
+
+fold render {
+    hold nl  = chr(10)
+    hold s   = "text|Ori Calc — " + mode + nl
+
+    // Mode description and input hint
+    when mode == "loan" {
+        s = s + "text|Loan  —  enter: principal  rate%  months" + nl
+        s = s + "edit|e.g.  200000  6.5  360" + nl
+    } else when mode == "save" {
+        s = s + "text|Savings  —  enter: monthly-deposit  rate%  years" + nl
+        s = s + "edit|e.g.  500  4  10" + nl
+    } else {
+        s = s + "text|Investment  —  enter: principal  rate%  years" + nl
+        s = s + "edit|e.g.  10000  8  20" + nl
+    }
+
+    // Mode-switch buttons
+    s = s + "btn|mode_loan||Loan" + nl
+    s = s + "btn|mode_save||Savings" + nl
+    s = s + "btn|mode_invest||Investment" + nl
+
+    // Calculate button (submits edit field value)
+    when mode == "loan" {
+        s = s + "btn|calc_loan|@edit|Calculate" + nl
+    } else when mode == "save" {
+        s = s + "btn|calc_save|@edit|Calculate" + nl
+    } else {
+        s = s + "btn|calc_invest|@edit|Calculate" + nl
+    }
+
+    // Result display
+    when len(result) > 0 {
+        s = s + "text|Result: " + result + nl
+    }
+
+    // History list (newest first, already stored newest-first)
+    when len(history) > 0 {
+        s = s + "text|─── History ───" + nl
+        hold i = 0
+        loop i < len(history) {
+            s = s + "item|noop|del_hist|" + str(i) + "|" + history[i] + nl
+            i = i + 1
+        }
+    }
+
+    s = s + "text|Powered by Ori" + nl
+    give s
+}
+
+// ── dispatch(ev, arg) — handle all user events ────────────────────────────────
+
+fold dispatch ev arg {
+    when ev == "mode_loan" {
+        mode   = "loan"
+        result = ""
+    } else when ev == "mode_save" {
+        mode   = "save"
+        result = ""
+    } else when ev == "mode_invest" {
+        mode   = "invest"
+        result = ""
+    } else when ev == "calc_loan" {
+        hold principal = parse_nth(arg, 0)
+        hold rate      = parse_nth(arg, 1)
+        hold months    = parse_nth(arg, 2)
+        result = calc_loan_val(principal, rate, months)
+        push_hist("[loan " + fmt_big(principal) + " @" + fmt2(rate) + "% " + str(months) + "mo]  " + result)
+    } else when ev == "calc_save" {
+        hold monthly = parse_nth(arg, 0)
+        hold rate    = parse_nth(arg, 1)
+        hold years   = parse_nth(arg, 2)
+        result = calc_save_val(monthly, rate, years)
+        push_hist("[save " + fmt2(monthly) + "/mo @" + fmt2(rate) + "% " + str(years) + "yr]  " + result)
+    } else when ev == "calc_invest" {
+        hold principal = parse_nth(arg, 0)
+        hold rate      = parse_nth(arg, 1)
+        hold years     = parse_nth(arg, 2)
+        result = calc_invest_val(principal, rate, years)
+        push_hist("[invest " + fmt_big(principal) + " @" + fmt2(rate) + "% " + str(years) + "yr]  " + result)
+    } else when ev == "del_hist" {
+        hold idx  = num(arg)
+        hold kept = []
+        hold i    = 0
+        loop i < len(history) {
+            when i != idx { push(kept, history[i]) }
+            i = i + 1
+        }
+        history = kept
+    }
+    give render()
+}

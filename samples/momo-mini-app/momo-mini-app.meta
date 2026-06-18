@@ -1,7 +1,0 @@
-name: momo-mini-app
-version: 1.0.0
-entry: ori/main.ori
-platform: momo-mini-app
-
-# `ori build samples/momo-mini-app` creates build/momo-mini-app.
-dependencies:

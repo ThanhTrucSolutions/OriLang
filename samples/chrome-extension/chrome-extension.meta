@@ -1,7 +1,0 @@
-name: chrome-extension
-version: 1.0.0
-entry: ori/main.ori
-platform: chrome-extension
-
-# `ori build samples/chrome-extension` creates build/chrome-extension.
-dependencies:

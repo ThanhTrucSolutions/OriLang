@@ -1,0 +1,5 @@
+name: financial-calc
+version: 1.0.0
+entry: ori/main.ori
+
+# dependencies:

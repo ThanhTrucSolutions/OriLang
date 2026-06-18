@@ -1,9 +1,0 @@
-name: desktop-win
-version: 1.0.0
-entry: ori/main.ori
-platform: windows
-ui: window
-
-# A native Windows GUI app. `ori run samples/desktop-win` opens a real window whose
-# todo logic runs on the Ori VM (core/orivm.c) embedded in a Win32 host.
-dependencies:

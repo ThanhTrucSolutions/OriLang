@@ -1,0 +1,5 @@
+﻿fold test {
+    hold s = ""
+    say s
+}
+test()
