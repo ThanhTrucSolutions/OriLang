@@ -1,0 +1,7 @@
+name: financy
+version: 1.0.0
+entry: ori/main.ori
+platform: chrome-extension
+
+# Add dependencies here.
+dependencies:

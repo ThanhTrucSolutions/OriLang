@@ -461,11 +461,13 @@ static Value bin_add(Value a, Value b){
 static double need_num(Value v){ if(v.t!=V_NUM) rt_error("arithmetic requires numbers"); return v.u.num; }
 
 static Value run(VM* vm){
+    uint64_t steps=0;
     while(vm->fp>0){
         Frame* fr=&vm->frames[vm->fp-1];
         Func* fn=fr->fn;
         for(;;){
             if(fr->ip>=fn->codeCount){ free(fr->locals); vm->fp--; break; }
+            if(++steps > 100000000ULL) rt_error("execution limit exceeded (100M instructions)");
             Instr ins=fn->code[fr->ip++];
             switch(ins.op){
                 case OP_HALT: return vm->sp>0?pop(vm):vnil();
@@ -495,8 +497,8 @@ static Value run(VM* vm){
                 case OP_ADD: { Value b=pop(vm),a=pop(vm); push(vm,bin_add(a,b)); break; }
                 case OP_SUB: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a-b)); break; }
                 case OP_MUL: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a*b)); break; }
-                case OP_DIV: { double b=need_num(pop(vm)),a=need_num(pop(vm)); if(b==0 && a!=0) rt_error("division by zero"); push(vm,vnum(a/b)); break; }
-                case OP_MOD: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(fmod(a,b))); break; }
+                case OP_DIV: { double b=need_num(pop(vm)),a=need_num(pop(vm)); if(b==0) rt_error("division by zero"); push(vm,vnum(a/b)); break; }
+                case OP_MOD: { double b=need_num(pop(vm)),a=need_num(pop(vm)); if(b==0) rt_error("modulo by zero"); push(vm,vnum(fmod(a,b))); break; }
                 case OP_NEG: { double a=need_num(pop(vm)); push(vm,vnum(-a)); break; }
                 case OP_EQ: { Value b=pop(vm),a=pop(vm); push(vm,vbool(val_eq(a,b))); break; }
                 case OP_NEQ:{ Value b=pop(vm),a=pop(vm); push(vm,vbool(!val_eq(a,b))); break; }
@@ -871,6 +873,7 @@ static uint8_t* read_all(const char* path, size_t* outN){
     FILE* f=fopen(path,"rb"); if(!f){ fprintf(stderr,"cannot open %s\n",path); exit(2); }
     fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
     if(n<0){ fprintf(stderr,"cannot seek %s\n",path); exit(2); }
+    if(n>256L*1024*1024){ fprintf(stderr,"image too large (>256MB): %s\n",path); exit(2); }
     uint8_t* b=xmalloc(n>0?(size_t)n:1); size_t got=fread(b,1,(size_t)n,f); (void)got; fclose(f); *outN=(size_t)n; return b;
 }
 
