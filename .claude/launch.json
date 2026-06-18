@@ -24,6 +24,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "5154", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\crypto-tracker\\build\\chrome-extension"],
       "port": 5154
+    },
+    {
+      "name": "ori-quick-notes",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5155", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\chrome-extension\\build\\chrome-extension"],
+      "port": 5155
     }
   ]
 }

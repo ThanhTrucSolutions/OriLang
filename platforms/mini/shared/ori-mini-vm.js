@@ -65,6 +65,7 @@
   Cursor.prototype.f64 = function() { var v = this.view.getFloat64(this.pos, true); this.pos += 8; return v; };
   Cursor.prototype.string = function() {
     var len = this.i32();
+    if (len < 0 || len > 0x3FFFFF0) throw new Error("string constant too long");
     var start = this.pos;
     this.pos += len;
     return decodeBytes(this.bytes.subarray(start, start + len));
@@ -80,6 +81,7 @@
   function deserialize(bytes) {
     var c = new Cursor(bytes);
     var constCount = c.i32();
+    if (constCount < 0 || constCount > 65535) throw new Error("bad constCount: " + constCount);
     var constants = [];
     for (var i = 0; i < constCount; i++) {
       var tag = c.u8();
@@ -91,10 +93,18 @@
     }
     var mainIndex = c.i32();
     var funcCount = c.i32();
+    if (funcCount < 0 || funcCount > 16383) throw new Error("bad funcCount: " + funcCount);
+    if (mainIndex < 0 || mainIndex >= funcCount) throw new Error("bad mainIndex: " + mainIndex);
     var funcs = [];
     for (var f = 0; f < funcCount; f++) {
-      var fn = { name: c.string(), arity: c.i32(), localCount: c.i32(), code: [] };
+      var localCount = 0;
+      var fn = { name: c.string(), arity: c.i32() };
+      localCount = c.i32();
+      if (localCount < 0 || localCount > 4095) throw new Error("bad localCount: " + localCount);
+      fn.localCount = localCount;
+      fn.code = [];
       var codeCount = c.i32();
+      if (codeCount < 0 || codeCount > 1048575) throw new Error("bad codeCount: " + codeCount);
       for (var j = 0; j < codeCount; j++) fn.code.push({ op: c.u8(), arg: c.i32() });
       funcs.push(fn);
     }
@@ -109,7 +119,7 @@
     return true;
   }
 
-  function display(v) {
+  function display(v, _d) {
     if (!v || v.t === V_NIL) return "nil";
     if (v.t === V_BOOL) return v.v ? "true" : "false";
     if (v.t === V_STR) return v.v;
@@ -121,8 +131,9 @@
       return Number(n).toPrecision(15).replace(/\.?0+$/, "");
     }
     if (v.t === V_ARR) {
+      if ((_d || 0) >= 32) return "[...]";
       var parts = [];
-      for (var i = 0; i < v.v.length; i++) parts.push(v.v[i].t === V_STR ? '"' + v.v[i].v + '"' : display(v.v[i]));
+      for (var i = 0; i < v.v.length; i++) parts.push(v.v[i].t === V_STR ? '"' + v.v[i].v + '"' : display(v.v[i], (_d || 0) + 1));
       return "[" + parts.join(", ") + "]";
     }
     return "";
@@ -169,6 +180,7 @@
   };
 
   OriVM.prototype.pushFrame = function(fnIndex, args) {
+    if (fnIndex < 0 || fnIndex >= this.program.funcs.length) throw new Error("bad function index: " + fnIndex);
     var fn = this.program.funcs[fnIndex];
     var n = Math.max(fn.localCount, args.length);
     var locals = [];
@@ -187,6 +199,7 @@
       if (argc !== fn.arity) throw new Error(fn.name + "() expects " + fn.arity + " arg(s) but got " + argc);
       this.pushFrame(callee.v, args);
     } else if (callee.t === V_HOST) {
+      if (callee.v < 0 || callee.v >= this.hosts.length) throw new Error("bad host index: " + callee.v);
       this.stack.push(this.hosts[callee.v].fn(args));
     } else {
       throw new Error("value is not callable");
