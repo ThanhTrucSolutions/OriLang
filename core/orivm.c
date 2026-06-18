@@ -649,9 +649,25 @@ static Value h_min(VM* vm, Value* a, int argc){ if(argc==0)return vnil(); double
 static Value h_upper(VM* vm, Value* a, int argc){ Str* s=argstr(a,argc,0); Value v=vstr_n(s->d,s->len); for(int i=0;i<v.u.s->len;i++){char c=v.u.s->d[i]; if(c>='a'&&c<='z')v.u.s->d[i]=c-32;} return v; }
 static Value h_lower(VM* vm, Value* a, int argc){ Str* s=argstr(a,argc,0); Value v=vstr_n(s->d,s->len); for(int i=0;i<v.u.s->len;i++){char c=v.u.s->d[i]; if(c>='A'&&c<='Z')v.u.s->d[i]=c+32;} return v; }
 
+/* Returns 1 if path contains a ".." component — catches /../ ..\ leading ../ etc. */
+static int has_dotdot(const char* path){
+    const char* p=path;
+    while(*p){
+        if(p[0]=='.'&&p[1]=='.'){
+            int at_start=(p==path)||(p[-1]=='/'||p[-1]=='\\');
+            char after=p[2];
+            int at_end=(after=='/'||after=='\\'||after=='\0');
+            if(at_start&&at_end) return 1;
+        }
+        p++;
+    }
+    return 0;
+}
+
 // ---- tooling builtins: file IO + program args (so Ori can be a compiler) ----
 static Value h_read_file(VM* vm, Value* a, int argc){
     Str* path=argstr(a,argc,0);
+    if(has_dotdot(path->d)){ fprintf(stderr,"[Ori] read_file: path traversal rejected\n"); rt_error("read_file: path traversal rejected"); }
     FILE* f=fopen(path->d,"rb"); if(!f){ rt_error("read_file: cannot open file"); }
     fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET);
     if(n<0||n>64*1024*1024){ fclose(f); rt_error("read_file: file unseekable or too large"); }
@@ -660,6 +676,7 @@ static Value h_read_file(VM* vm, Value* a, int argc){
 }
 static Value h_write_bytes(VM* vm, Value* a, int argc){
     Str* path=argstr(a,argc,0);
+    if(has_dotdot(path->d)){ fprintf(stderr,"[Ori] write_bytes: path traversal rejected\n"); rt_error("write_bytes: path traversal rejected"); }
     if(argc<2||a[1].t!=V_ARR) rt_error("write_bytes(path, array)");
     Arr* arr=a[1].u.a;
     FILE* f=fopen(path->d,"wb"); if(!f) rt_error("write_bytes: cannot open file");
@@ -668,6 +685,7 @@ static Value h_write_bytes(VM* vm, Value* a, int argc){
 }
 static Value h_write_file(VM* vm, Value* a, int argc){
     Str* path=argstr(a,argc,0); Str* s=argstr(a,argc,1);
+    if(has_dotdot(path->d)){ fprintf(stderr,"[Ori] write_file: path traversal rejected\n"); rt_error("write_file: path traversal rejected"); }
     FILE* f=fopen(path->d,"wb"); if(!f) rt_error("write_file: cannot open file");
     fwrite(s->d,1,s->len,f); fclose(f); return vnum(s->len);
 }
@@ -720,21 +738,6 @@ static Value h_run(VM* vm, Value* a, int argc){
 #endif
 #endif
 }
-/* Returns 1 if path contains a ".." component — catches /../ ..\ leading ../ etc. */
-static int has_dotdot(const char* path){
-    const char* p=path;
-    while(*p){
-        if(p[0]=='.'&&p[1]=='.'){
-            int at_start=(p==path)||(p[-1]=='/'||p[-1]=='\\');
-            char after=p[2];
-            int at_end=(after=='/'||after=='\\'||after=='\0');
-            if(at_start&&at_end) return 1;
-        }
-        p++;
-    }
-    return 0;
-}
-
 static void ori_mkdirs(const char* path){
     char tmp[1024]; strncpy(tmp,path,sizeof tmp-1); tmp[sizeof tmp-1]=0;
     for(char* p=tmp+1; *p; p++){
@@ -771,6 +774,7 @@ static Value h_copy(VM* vm, Value* a, int argc){
 static Value h_glob(VM* vm, Value* a, int argc){
     Value arr=varr_new();
     if(argc<1||a[0].t!=V_STR) return arr;
+    if(has_dotdot(a[0].u.s->d)){ fprintf(stderr,"[Ori] glob: path traversal rejected\n"); return arr; }
 #ifdef _WIN32
     const char* pat=a[0].u.s->d;
     char dir[1024]=""; strncpy(dir,pat,sizeof dir-1);
