@@ -230,14 +230,18 @@
         case OP_POP: this.stack.pop(); break;
         case OP_LOADGLOBAL: {
           if (ins.arg < 0 || ins.arg >= this.program.constants.length) throw new Error("LOADGLOBAL: constant index out of range");
-          var name = this.program.constants[ins.arg].v;
+          var lgc = this.program.constants[ins.arg];
+          if (lgc.t !== V_STR) throw new Error("LOADGLOBAL: operand must be a string constant");
+          var name = lgc.v;
           if (!(name in this.globals)) throw new Error("undefined variable '" + name + "'");
           this.stack.push(this.globals[name]);
           break;
         }
         case OP_STOREGLOBAL: {
           if (ins.arg < 0 || ins.arg >= this.program.constants.length) throw new Error("STOREGLOBAL: constant index out of range");
-          this.globals[this.program.constants[ins.arg].v] = this.stack.pop();
+          var sgc = this.program.constants[ins.arg];
+          if (sgc.t !== V_STR) throw new Error("STOREGLOBAL: operand must be a string constant");
+          this.globals[sgc.v] = this.stack.pop();
           break;
         }
         case OP_LOADLOCAL: this.stack.push(fr.locals[ins.arg] || nil()); break;
@@ -310,7 +314,7 @@
     this.stack = [];
     var f = this.globals[fname];
     if (!f || f.t !== V_FUNC) return "";
-    this.pushFrame(f.v, [str(arg || "")]);
+    this.pushFrame(f.v, [str(arg != null ? arg : "")]);
     return display(this.run());
   };
 
@@ -319,7 +323,7 @@
     this.stack = [];
     var f = this.globals[fname];
     if (!f || f.t !== V_FUNC) return "";
-    this.pushFrame(f.v, [str(a1 || ""), str(a2 || "")]);
+    this.pushFrame(f.v, [str(a1 != null ? a1 : ""), str(a2 != null ? a2 : "")]);
     return display(this.run());
   };
 

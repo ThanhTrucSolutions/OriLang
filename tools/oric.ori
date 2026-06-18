@@ -889,7 +889,9 @@ fold emit_double(buf, v) {
         }
     }
     // Subnormal (biased exp would be 0 or negative) — emit as signed zero
+    // Warn: the original value is lost; subnormal literals are extremely rare in practice
     when exp < 0 - 1022 {
+        print("oric: warning: subnormal constant emitted as zero (value too small for IEEE 754 normal range)")
         emit_i32(buf, 0)
         emit_i32(buf, sign * sign_bit)
         give 0
