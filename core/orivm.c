@@ -1485,15 +1485,29 @@ static Value h_db_error(VM* vm, Value* a, int argc){ rt_error("db_error: MySQL s
 static Value h_db_close(VM* vm, Value* a, int argc){ rt_error("db_close: MySQL support not compiled in"); return vnil(); }
 #endif /* ORI_MYSQL */
 
+/* str_join(arr, sep) — efficient array-of-strings join avoiding O(n²) concat */
+static Value h_str_join(VM* vm, Value* a, int argc){
+    if(argc<1||a[0].t!=V_ARR) return vstr("");
+    const char* sep=""; int seplen=0;
+    if(argc>=2&&a[1].t==V_STR){ sep=a[1].u.s->d; seplen=a[1].u.s->len; }
+    Arr* arr=a[0].u.a;
+    Sb sb; sb_init(&sb);
+    for(int i=0;i<arr->len;i++){
+        if(i&&seplen) sb_put(&sb,sep,seplen);
+        if(arr->it[i].t==V_STR) sb_put(&sb,arr->it[i].u.s->d,arr->it[i].u.s->len);
+    }
+    Value v=vstr_n(sb.d,sb.len); free(sb.d); return v;
+}
+
 static void register_hosts(VM* vm){
     static const char* names[] = {
-        "say","print","str","num","len","push","pop","char_at","ord","chr","substr","type",
+        "say","print","str","num","len","push","pop","char_at","ord","chr","substr","str_join","type",
         "abs","floor","sqrt","max","min","upper","lower",
         "read_file","write_bytes","write_file","argc","argv",
         "env","exists","sh","run","mkdirs","copy","glob","abspath",
         "is_dir","mtime","sleep_ms","read_bytes_b64","http_get","http_post","http_serve","json_get_str","json_get_num","json_escape","json_parse_arr","http_put","http_delete","store_next_id","store_set","store_get","store_delete","store_list","db_connect","db_exec","db_query","db_escape","db_last_id","db_error","db_close" };
     static HostFn fns[] = {
-        h_say,h_say,h_str,h_num,h_len,h_push,h_pop,h_char_at,h_ord,h_chr,h_substr,h_type,
+        h_say,h_say,h_str,h_num,h_len,h_push,h_pop,h_char_at,h_ord,h_chr,h_substr,h_str_join,h_type,
         h_abs,h_floor,h_sqrt,h_max,h_min,h_upper,h_lower,
         h_read_file,h_write_bytes,h_write_file,h_argc,h_argv,
         h_env,h_exists,h_sh,h_run,h_mkdirs,h_copy,h_glob,h_abspath,

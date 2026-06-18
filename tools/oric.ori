@@ -171,25 +171,25 @@ fold tokenize(src) {
             emit_tok(toks, TK_IDENT, substr(src, s1, i - s1), 0)
         } else when c == "\"" {
             i = i + 1
-            hold sval = ""
+            hold sparts = []
             loop i < n && char_at(src, i) != "\"" {
                 hold ch = char_at(src, i)
                 when ch == "\\" {
                     i = i + 1
                     hold e = char_at(src, i)
-                    when e == "n" { sval = sval + chr(10) }
-                    else when e == "t" { sval = sval + chr(9) }
-                    else when e == "r" { sval = sval + chr(13) }
-                    else { sval = sval + e }
+                    when e == "n" { push(sparts, chr(10)) }
+                    else when e == "t" { push(sparts, chr(9)) }
+                    else when e == "r" { push(sparts, chr(13)) }
+                    else { push(sparts, e) }
                     i = i + 1
                 } else {
-                    sval = sval + ch
+                    push(sparts, ch)
                     i = i + 1
                 }
             }
             when i >= n { print("oric: unterminated string literal") }
             i = i + 1
-            emit_tok(toks, TK_STR, sval, 0)
+            emit_tok(toks, TK_STR, str_join(sparts, ""), 0)
         } else {
             hold two = substr(src, i, 2)
             when two == "==" || two == "!=" || two == "<=" || two == ">=" || two == "&&" || two == "||" {
