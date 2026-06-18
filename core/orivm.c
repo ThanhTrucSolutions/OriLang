@@ -1091,7 +1091,8 @@ static Value h_json_get_str(VM* vm, Value* a, int argc){
     p++;
     const char* start=p;
     char buf[65536]; int bi=0;
-    while(*p&&*p!='"'&&bi<(int)sizeof(buf)-1){
+    /* guard -4: worst-case write is 3 UTF-8 bytes (\uXXXX) + null → need 4 slots */
+    while(*p&&*p!='"'&&bi<(int)sizeof(buf)-4){
         if(*p=='\\'&&*(p+1)){
             p++;
             switch(*p){
@@ -1146,7 +1147,8 @@ static Value h_json_get_num(VM* vm, Value* a, int argc){
 static Value h_json_escape(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vstr("");
     Str* s=a[0].u.s;
-    char* buf=(char*)xmalloc(s->len*6+3);
+    if(s->len>10*1024*1024){ fprintf(stderr,"[Ori] json_escape: input too large (>10MB)\n"); return vstr(""); }
+    char* buf=(char*)xmalloc((size_t)s->len*6+3);
     int bi=0;
     for(int i=0;i<s->len;i++){
         unsigned char c=(unsigned char)s->d[i];
