@@ -1,0 +1,213 @@
+// samples/crypto-tracker/ori/main.ori — Live crypto price tracker in Ori.
+//
+// Universal UI model: render() + dispatch(ev, arg)
+// Same source runs on every Ori host without modification:
+//   Mini-programs, Chrome extension, desktop (Win/Mac/Linux), web (WASM), Android, iOS
+//
+// Free data source: CoinGecko (no API key required)
+//   GET https://api.coingecko.com/api/v3/simple/price
+//       ?ids=bitcoin,...&vs_currencies=usd&include_24hr_change=true
+//
+// Dispatch events:
+//   refresh        — fetch live prices via http_get (native platforms)
+//   update|JSON    — parse pre-fetched JSON (web/Android host passes body here)
+//   del|INDEX      — remove a coin from the watchlist
+
+// ── JSON helpers ─────────────────────────────────────────────────────────────
+
+// Find the first bare numeric value for `key` inside `body`.
+fold json_num body key {
+    hold search = "\"" + key + "\":"
+    hold ki = 0
+    loop ki < len body {
+        when ki + len search <= len body && substr(body, ki, len search) == search {
+            hold vi = ki + len search
+            loop vi < len body && (char_at(body, vi) == " " || char_at(body, vi) == "\t") {
+                vi = vi + 1
+            }
+            when char_at(body, vi) != "\"" {
+                hold end = vi
+                loop end < len body &&
+                     char_at(body, end) != "," &&
+                     char_at(body, end) != "}" &&
+                     char_at(body, end) != "]" {
+                    end = end + 1
+                }
+                give substr(body, vi, end - vi)
+            }
+        }
+        ki = ki + 1
+    }
+    give ""
+}
+
+// Find a numeric field inside the JSON object for a given coin ID.
+// CoinGecko response: {"bitcoin":{"usd":97000.12,"usd_24h_change":2.56},...}
+fold coin_field body coin_id field {
+    hold search = "\"" + coin_id + "\""
+    hold ki = 0
+    loop ki < len body {
+        when ki + len search <= len body && substr(body, ki, len search) == search {
+            hold vi = ki + len search
+            loop vi < len body && char_at(body, vi) != "{" { vi = vi + 1 }
+            hold obj = substr(body, vi + 1, 120)
+            give json_num(obj, field)
+        }
+        ki = ki + 1
+    }
+    give ""
+}
+
+// Truncate a numeric string to 2 decimal places.
+fold trunc2 s {
+    when s == "" { give "N/A" }
+    hold dot = -1
+    hold i = 0
+    loop i < len s {
+        when char_at(s, i) == "." { dot = i }
+        i = i + 1
+    }
+    when dot < 0 { give s }
+    when len s - dot - 1 <= 2 { give s }
+    give substr(s, 0, dot + 3)
+}
+
+// ── App state ─────────────────────────────────────────────────────────────────
+// Each row: [coin_id, symbol, display_name, price_str, change_pct_str]
+hold coins = [
+    ["bitcoin",      "BTC",  "Bitcoin",   "", ""],
+    ["ethereum",     "ETH",  "Ethereum",  "", ""],
+    ["binancecoin",  "BNB",  "BNB",       "", ""],
+    ["solana",       "SOL",  "Solana",    "", ""],
+    ["ripple",       "XRP",  "XRP",       "", ""],
+    ["dogecoin",     "DOGE", "Dogecoin",  "", ""],
+    ["cardano",      "ADA",  "Cardano",   "", ""],
+    ["avalanche-2",  "AVAX", "Avalanche", "", ""]
+]
+hold status = "Ready. Tap Refresh to load live prices."
+
+// ── Build the CoinGecko request URL from current watchlist ────────────────────
+fold build_url {
+    hold ids = ""
+    hold i = 0
+    loop i < len coins {
+        when i > 0 { ids = ids + "," }
+        ids = ids + coins[i][0]
+        i = i + 1
+    }
+    give "https://api.coingecko.com/api/v3/simple/price?ids=" + ids +
+         "&vs_currencies=usd&include_24hr_change=true"
+}
+
+// ── Parse JSON body and update all coin prices ────────────────────────────────
+fold do_update body {
+    when len body == 0 {
+        status = "Error: no data received."
+        give render()
+    }
+    hold i = 0
+    loop i < len coins {
+        hold cid = coins[i][0]
+        coins[i][3] = trunc2(coin_field(body, cid, "usd"))
+        coins[i][4] = trunc2(coin_field(body, cid, "usd_24h_change"))
+        i = i + 1
+    }
+    status = "Updated  •  Source: CoinGecko (free API, no key)"
+    give render()
+}
+
+// ── Refresh via http_get (native: Windows / Linux / Android / Desktop) ─────────
+fold do_refresh {
+    status = "Fetching prices..."
+    hold body = http_get build_url()
+    when len body == 0 {
+        status = "Error: cannot reach CoinGecko. Check your network."
+        give render()
+    }
+    give do_update body
+}
+
+// ── Widget spec string ────────────────────────────────────────────────────────
+fold render {
+    hold nl = chr 10
+    hold s  = "text|Ori Crypto Tracker — Live Prices" + nl
+    s = s + "text|" + status + nl
+    s = s + "btn|refresh||Refresh Prices" + nl
+    s = s + "text| " + nl
+    hold i = 0
+    loop i < len coins {
+        hold c    = coins[i]
+        hold line = c[1] + "  " + c[2]
+        when c[3] != "" && c[3] != "N/A" {
+            line = line + "   $" + c[3]
+            when c[4] != "" && c[4] != "N/A" {
+                hold ch = c[4]
+                when num ch >= 0 { ch = "+" + ch }
+                line = line + "  (" + ch + "%)"
+            }
+        } else when c[3] == "N/A" {
+            line = line + "   N/A"
+        } else {
+            line = line + "   —"
+        }
+        s = s + "item|noop|del|" + str i + "|" + line + nl
+        i = i + 1
+    }
+    s = s + "text| " + nl
+    s = s + "text|CoinGecko • free API • coingecko.com" + nl
+    give s
+}
+
+// ── Event dispatcher ──────────────────────────────────────────────────────────
+fold dispatch ev arg {
+    when ev == "refresh" {
+        give do_refresh()
+    } else when ev == "update" {
+        give do_update arg
+    } else when ev == "del" {
+        hold idx  = num arg
+        hold kept = []
+        hold i = 0
+        loop i < len coins {
+            when i != idx { push(kept, coins[i]) }
+            i = i + 1
+        }
+        coins = kept
+        status = "Removed from watchlist."
+    } else when ev == "noop" {
+        // item tapped, no action needed
+    }
+    give render()
+}
+
+// ── Console startup: fetch + print (native VM), GUI hosts use render/dispatch ─
+say "=== Ori Crypto Tracker ==="
+say ""
+say "Fetching live prices from CoinGecko..."
+hold init_body = http_get build_url()
+when len init_body > 0 {
+    hold init_r = do_update init_body
+    say status
+    say ""
+    hold ci = 0
+    loop ci < len coins {
+        hold co = coins[ci]
+        hold ln = "  " + co[1] + "  " + co[2]
+        when co[3] != "" && co[3] != "N/A" {
+            ln = ln + "   $" + co[3]
+            when co[4] != "" && co[4] != "N/A" {
+                hold pch = co[4]
+                when num pch >= 0 { pch = "+" + pch }
+                ln = ln + "  (" + pch + "%)"
+            }
+        }
+        say ln
+        ci = ci + 1
+    }
+    say ""
+    say "Data: CoinGecko (coingecko.com)"
+} else {
+    say "Error: cannot reach CoinGecko. Check your network."
+}
+say ""
+say "Powered by the Ori VM."
