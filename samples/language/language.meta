@@ -1,0 +1,7 @@
+name: language
+version: 1.0.0
+entry: ori/main.ori
+platform: windows
+
+# Language showcase: demonstrates Ori syntax, arrays, string ops, and meta-interpretation.
+# ori run samples/language
