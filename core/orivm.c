@@ -989,6 +989,7 @@ static Value h_http_serve(VM* vm, Value* a, int argc){
         char hdr[512]; int hlen=snprintf(hdr,sizeof hdr,
             "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %zu\r\n"
             "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: Content-Type\r\n"
+            "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
             "Connection: close\r\n\r\n",ct,resp_len);
         send(conn,hdr,hlen,0);
         if(resp_len>0) send(conn,resp_s,(int)resp_len,0);
@@ -1071,6 +1072,26 @@ static Value h_json_get_str(VM* vm, Value* a, int argc){
                 case 'r': buf[bi++]='\r'; break;
                 case '"': buf[bi++]='"'; break;
                 case '\\': buf[bi++]='\\'; break;
+                case '/': buf[bi++]='/'; break;
+                case 'b': buf[bi++]='\b'; break;
+                case 'f': buf[bi++]='\f'; break;
+                case 'u': {
+                    /* decode \uXXXX → UTF-8 */
+                    unsigned int cp=0; int ok=1;
+                    for(int hi=0;hi<4;hi++){
+                        char h=*(p+1+hi);
+                        if(h>='0'&&h<='9') cp=(cp<<4)|(unsigned)(h-'0');
+                        else if(h>='a'&&h<='f') cp=(cp<<4)|(unsigned)(h-'a'+10);
+                        else if(h>='A'&&h<='F') cp=(cp<<4)|(unsigned)(h-'A'+10);
+                        else { ok=0; break; }
+                    }
+                    if(ok){ p+=4;
+                        if(cp<0x80){ buf[bi++]=(char)cp; }
+                        else if(cp<0x800){ buf[bi++]=(char)(0xC0|(cp>>6)); buf[bi++]=(char)(0x80|(cp&0x3F)); }
+                        else { buf[bi++]=(char)(0xE0|(cp>>12)); buf[bi++]=(char)(0x80|((cp>>6)&0x3F)); buf[bi++]=(char)(0x80|(cp&0x3F)); }
+                    } else { buf[bi++]='\\'; buf[bi++]='u'; }
+                    break;
+                }
                 default: buf[bi++]='\\'; if(bi<(int)sizeof(buf)-1) buf[bi++]=*p; break;
             }
         } else { buf[bi++]=*p; }
