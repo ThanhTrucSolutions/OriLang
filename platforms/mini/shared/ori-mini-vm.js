@@ -229,12 +229,17 @@
         case OP_PUSHFALSE: this.stack.push(bool(false)); break;
         case OP_POP: this.stack.pop(); break;
         case OP_LOADGLOBAL: {
+          if (ins.arg < 0 || ins.arg >= this.program.constants.length) throw new Error("LOADGLOBAL: constant index out of range");
           var name = this.program.constants[ins.arg].v;
           if (!(name in this.globals)) throw new Error("undefined variable '" + name + "'");
           this.stack.push(this.globals[name]);
           break;
         }
-        case OP_STOREGLOBAL: this.globals[this.program.constants[ins.arg].v] = this.stack.pop(); break;
+        case OP_STOREGLOBAL: {
+          if (ins.arg < 0 || ins.arg >= this.program.constants.length) throw new Error("STOREGLOBAL: constant index out of range");
+          this.globals[this.program.constants[ins.arg].v] = this.stack.pop();
+          break;
+        }
         case OP_LOADLOCAL: this.stack.push(fr.locals[ins.arg] || nil()); break;
         case OP_STORELOCAL: fr.locals[ins.arg] = this.stack.pop(); break;
         case OP_ADD: {
@@ -275,8 +280,8 @@
         }
         case OP_MAKEARRAY: {
           if (ins.arg < 0 || ins.arg > 65535) throw new Error("bad MAKEARRAY count");
-          var out = [];
-          for (var ai = 0; ai < ins.arg; ai++) out.unshift(this.stack.pop());
+          var out = new Array(ins.arg);
+          for (var ai = ins.arg - 1; ai >= 0; ai--) out[ai] = this.stack.pop();
           this.stack.push(arr(out));
           break;
         }
@@ -359,9 +364,9 @@
         var v = args[0] || nil();
         return str(v.t === V_NIL ? "nil" : v.t === V_NUM ? "number" : v.t === V_BOOL ? "bool" : v.t === V_STR ? "string" : v.t === V_ARR ? "array" : "function");
       }],
-      ["abs", function(args) { return num(Math.abs(argNum(args, 0))); }],
-      ["floor", function(args) { return num(Math.floor(argNum(args, 0))); }],
-      ["sqrt", function(args) { return num(Math.sqrt(argNum(args, 0))); }],
+      ["abs", function(args) { var r = Math.abs(argNum(args, 0)); if (!isFinite(r)) throw new Error("abs result is NaN or Inf"); return num(r); }],
+      ["floor", function(args) { var r = Math.floor(argNum(args, 0)); if (!isFinite(r)) throw new Error("floor result is NaN or Inf"); return num(r); }],
+      ["sqrt", function(args) { var r = Math.sqrt(argNum(args, 0)); if (!isFinite(r)) throw new Error("sqrt result is NaN or Inf"); return num(r); }],
       ["max", function(args) { if (!args.length) return nil(); return num(Math.max.apply(Math, args.map(function(v) { return needNum(v); }))); }],
       ["min", function(args) { if (!args.length) return nil(); return num(Math.min.apply(Math, args.map(function(v) { return needNum(v); }))); }],
       ["upper", function(args) { return str(argStr(args, 0).toUpperCase()); }],
