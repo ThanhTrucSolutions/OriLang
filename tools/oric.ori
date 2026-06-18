@@ -205,7 +205,7 @@ fold p_text() { give P_toks[P_pos][1] }
 fold p_num() { give P_toks[P_pos][2] }
 fold p_advance() {
     hold t = P_toks[P_pos]
-    P_pos = P_pos + 1
+    when P_pos < len(P_toks) - 1 { P_pos = P_pos + 1 }
     give t
 }
 fold p_check_sym(s) {
