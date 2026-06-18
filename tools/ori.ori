@@ -181,75 +181,131 @@ fold cmd_doctor {
 }
 
 // ===== CREATE =====
-fold cmd_create proj_name platform {
-    hold ori_dir  = jp(proj_name, "ori")
-    hold main_ori = jp(ori_dir, "main.ori")
-    ensure_dir(ori_dir)
-    when is_mini(platform) {
-        write_text(main_ori,
-"// " + proj_name + " — mini-app model in Ori.\n" +
-"// The host renders render() and dispatches events to dispatch(ev, arg).\n" +
-"hold todos = []\n\n" +
+// Widget template body (shared by all GUI platforms).
+// title = first text line, subtitle = second text line, seed1/seed2 = pre-loaded items.
+fold tpl_widget title subtitle seed1 seed2 {
+    give "hold todos = []\n\n" +
 "fold render {\n" +
-"    hold s = \"text|" + proj_name + chr(10) + "\"\n" +
-"    s = s + \"text|Logic written in Ori, compiled to .orb" + chr(10) + "\"\n" +
+"    hold s = \"text|" + title + chr(10) + "\"\n" +
+"    s = s + \"text|" + subtitle + chr(10) + "\"\n" +
 "    s = s + \"edit|What needs doing?" + chr(10) + "\"\n" +
 "    s = s + \"btn|add|@edit|Add" + chr(10) + "\"\n" +
 "    hold i = 0\n" +
-"    loop i < len(todos) {\n" +
+"    loop i < len todos {\n" +
 "        hold it = todos[i]\n" +
 "        hold mark = \"[ ] \"\n" +
 "        when it[0] == 1 { mark = \"[x] \" }\n" +
-"        s = s + \"item|toggle|del|\" + str(i) + \"|\" + mark + it[1] + chr(10)\n" +
+"        s = s + \"item|toggle|del|\" + str i + \"|\" + mark + it[1] + chr 10\n" +
 "        i = i + 1\n" +
 "    }\n" +
 "    give s\n" +
 "}\n\n" +
 "fold dispatch ev arg {\n" +
 "    when ev == \"add\" {\n" +
-"        when len(arg) > 0 { push(todos, [0, arg]) }\n" +
+"        when len arg > 0 { push (todos, [0, arg]) }\n" +
 "    } else when ev == \"toggle\" {\n" +
-"        hold idx = num(arg)\n" +
-"        when idx >= 0 && idx < len(todos) {\n" +
-"            when todos[idx][0] == 0 { todos[idx][0] = 1 } else { todos[idx][0] = 0 }\n" +
+"        hold idx = num arg\n" +
+"        when idx >= 0 && idx < len todos {\n" +
+"            hold it = todos[idx]\n" +
+"            when it[0] == 0 { it[0] = 1 } else { it[0] = 0 }\n" +
 "        }\n" +
 "    } else when ev == \"del\" {\n" +
-"        hold idx = num(arg)\n" +
+"        hold idx = num arg\n" +
 "        hold kept = []\n" +
 "        hold i = 0\n" +
-"        loop i < len(todos) {\n" +
-"            when i != idx { push(kept, todos[i]) }\n" +
+"        loop i < len todos {\n" +
+"            when i != idx { push (kept, todos[i]) }\n" +
 "            i = i + 1\n" +
 "        }\n" +
 "        todos = kept\n" +
 "    }\n" +
 "    give render()\n" +
 "}\n\n" +
-"push(todos, [0, \"Learn Ori\"])\n" +
-"push(todos, [0, \"Build everywhere\"])\n")
-    } else {
-        write_text(main_ori,
-"// " + proj_name + "/ori/main.ori\n" +
-"// Run: ori run (or ori dev for hot reload)\n\n" +
-"fold fib n {\n" +
+"push (todos, [0, \"" + seed1 + "\"])\n" +
+"push (todos, [0, \"" + seed2 + "\"])\n"
+}
+
+// Console template body.
+fold tpl_console host {
+    give "fold fib n {\n" +
 "    when n < 2 { give n }\n" +
-"    give fib(n - 1) + fib(n - 2)\n" +
+"    give fib (n - 1) + fib (n - 2)\n" +
 "}\n\n" +
 "hold i = 0\n" +
-"loop i < 12 {\n" +
-"    say(\"fib(\" + str(i) + \") = \" + str(fib(i)))\n" +
+"loop i < 10 {\n" +
+"    say (\"fib(\" + str i + \") = \" + str (fib i))\n" +
 "    i = i + 1\n" +
 "}\n" +
-"say \"Hello from Ori!\"\n")
+"say (\"Hello from Ori on " + host + "!\")\n"
+}
+
+fold cmd_create proj_name platform {
+    hold ori_dir  = jp(proj_name, "ori")
+    hold main_ori = jp(ori_dir, "main.ori")
+    ensure_dir(ori_dir)
+
+    // Resolve .meta platform + optional ui:window field
+    hold meta_platform = platform
+    hold meta_ui = ""
+    when platform == "desktop-win"  { meta_platform = "windows"  meta_ui = "window" }
+    when platform == "desktop-macos" { meta_platform = "macos"   meta_ui = "window" }
+
+    when is_mini(platform) {
+        write_text(main_ori,
+"// " + proj_name + "/ori/main.ori — " + platform + " (mini-app)\n" +
+"// Host calls render() to paint and dispatch(ev, arg) on user actions.\n" +
+tpl_widget(proj_name, "Logic written in Ori, compiled to .orb", "Learn Ori", "Build everywhere"))
+    } else when platform == "web" {
+        write_text(main_ori,
+"// " + proj_name + "/ori/main.ori — web app (WASM)\n" +
+"// JS calls ori_call_str(\"render\",\"\") on load and ori_call2(\"dispatch\",ev,arg) on events.\n" +
+tpl_widget(proj_name, "Running in the browser via WASM", "Open in a browser", "ori run " + proj_name))
+    } else when platform == "android" {
+        write_text(main_ori,
+"// " + proj_name + "/ori/main.ori — Android (JNI host)\n" +
+"// The Android host calls render() to paint the UI and dispatch(ev, arg) on user actions.\n" +
+tpl_widget(proj_name, "Logic in Ori; C VM runs via JNI", "Open APK on Android", "ori build " + proj_name))
+    } else when platform == "ios" {
+        write_text(main_ori,
+"// " + proj_name + "/ori/main.ori — iOS (UIKit host)\n" +
+"// The iOS host calls render() to paint and dispatch(ev, arg) on user actions.\n" +
+tpl_widget(proj_name, "Logic in Ori; C VM embedded in UIKit", "Run on iOS Simulator", "ori build " + proj_name))
+    } else when platform == "desktop-win" {
+        write_text(main_ori,
+"// " + proj_name + "/ori/main.ori — Windows desktop (Win32 window)\n" +
+"// The Win32 host calls render() to draw the window and dispatch(ev, arg) on events.\n" +
+tpl_widget(proj_name, "Logic in Ori; drawn by the native Win32 host", "Build the Ori compiler", "Ship to every platform"))
+    } else when platform == "desktop-macos" {
+        write_text(main_ori,
+"// " + proj_name + "/ori/main.ori — macOS desktop (AppKit window)\n" +
+"// The AppKit host calls render() to draw the window and dispatch(ev, arg) on events.\n" +
+tpl_widget(proj_name, "Logic in Ori; drawn by a generic macOS host", "Learn the Ori language", "Run on macOS"))
+    } else when platform == "linux" {
+        write_text(main_ori,
+"// " + proj_name + "/ori/main.ori — Linux console\n" +
+"// Build: ori build " + proj_name + "   Run: ori run " + proj_name + "\n\n" +
+tpl_console("Linux"))
+    } else when platform == "macos" {
+        write_text(main_ori,
+"// " + proj_name + "/ori/main.ori — macOS console\n" +
+"// Build: ori build " + proj_name + "   Run: ori run " + proj_name + "\n\n" +
+tpl_console("macOS"))
+    } else {
+        // windows (console) or any unrecognised platform
+        write_text(main_ori,
+"// " + proj_name + "/ori/main.ori\n" +
+"// Run: ori run " + proj_name + " (or ori dev for hot reload)\n\n" +
+tpl_console("Windows"))
     }
+
     hold meta_path = jp(proj_name, proj_name + ".meta")
-    write_text(meta_path,
-"name: " + proj_name + "\n" +
-"version: 1.0.0\n" +
-"entry: ori/main.ori\n" +
-"platform: " + platform + "\n\n" +
-"# Add dependencies here.\n" +
-"dependencies:\n")
+    hold meta_body = "name: " + proj_name + "\n" +
+        "version: 1.0.0\n" +
+        "entry: ori/main.ori\n" +
+        "platform: " + meta_platform + "\n"
+    when meta_ui != "" { meta_body = meta_body + "ui: " + meta_ui + "\n" }
+    meta_body = meta_body + "\n# Add dependencies here.\ndependencies:\n"
+    write_text(meta_path, meta_body)
     say("Created project '" + proj_name + "' (platform: " + platform + ")")
     say("  cd " + proj_name + " && ori run")
     give 0
@@ -763,6 +819,7 @@ fold cmd_export proj {
 fold usage {
     say("Ori toolchain  (C VM + self-hosted Ori compiler)")
     say("  ori create <name> [windows|web|android|linux|macos|ios")
+    say("                     desktop-win|desktop-macos")
     say("                     wechat-mini-program|alipay-mini-program")
     say("                     zalo-mini-app|telegram-mini-app|line-mini-app")
     say("                     grab-mini-app|momo-mini-app|chrome-extension]")
