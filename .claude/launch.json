@@ -30,6 +30,18 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "5155", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\chrome-extension\\build\\chrome-extension"],
       "port": 5155
+    },
+    {
+      "name": "ori-language",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5156", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\language\\build\\chrome-extension"],
+      "port": 5156
+    },
+    {
+      "name": "ori-web-ext",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5157", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\web\\build\\chrome-extension"],
+      "port": 5157
     }
   ]
 }
