@@ -42,6 +42,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "5157", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\web\\build\\chrome-extension"],
       "port": 5157
+    },
+    {
+      "name": "ori-todo-web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5158", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\todo-web\\build\\web"],
+      "port": 5158
     }
   ]
 }

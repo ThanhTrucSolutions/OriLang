@@ -748,12 +748,23 @@ static Value h_abspath(VM* vm, Value* a, int argc){
     return a[0];
 }
 // Reject URLs containing shell metacharacters to prevent injection via popen.
+// On Windows, cmd.exe expands %VAR% inside double-quoted arguments; if the env-var
+// value contains '"' it can break out of the curl command.  Allow %XX (valid URL
+// percent-encoding) but reject bare '%' not followed by exactly two hex digits.
 static int url_shell_safe(const char* url){
     for(const char* p=url;*p;p++){
         char c=*p;
         if(c=='\''||c=='"'||c=='`'||c=='$'||c=='\\'||c=='\n'||c=='\r'||
            c==';'||c=='|'||c=='('||c==')'||c=='{'||c=='}'||c=='<'||c=='>')
             return 0;
+#ifdef _WIN32
+        if(c=='%'){
+            char h1=p[1], h2=p[2];
+            int ok1=(h1>='0'&&h1<='9')||(h1>='A'&&h1<='F')||(h1>='a'&&h1<='f');
+            int ok2=(h2>='0'&&h2<='9')||(h2>='A'&&h2<='F')||(h2>='a'&&h2<='f');
+            if(!ok1||!ok2) return 0;
+        }
+#endif
     }
     return 1;
 }
