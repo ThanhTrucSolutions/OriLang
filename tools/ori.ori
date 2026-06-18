@@ -864,7 +864,8 @@ fold cmd_export proj {
 "# Run:     docker run -p 8081:8081 " + m[0] + "\n" +
 "# Compose: docker compose up\n" +
 "\n" +
-"FROM gcc:12-alpine AS builder\n" +
+"FROM alpine:3.19 AS builder\n" +
+"RUN apk add --no-cache gcc musl-dev\n" +
 "WORKDIR /build\n" +
 "COPY orivm.c chacha20.h sha256.h ./\n" +
 "RUN gcc -O2 -o orivm orivm.c -lm\n" +
