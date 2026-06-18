@@ -207,6 +207,7 @@
   };
 
   OriVM.prototype.run = function() {
+    var steps = 0;
     while (this.frames.length > 0) {
       var fr = this.frames[this.frames.length - 1];
       var fn = fr.fn;
@@ -214,6 +215,7 @@
         this.frames.pop();
         continue;
       }
+      if (++steps > 10000000) throw new Error("execution limit exceeded (10M instructions)");
       var ins = fn.code[fr.ip++];
       switch (ins.op) {
         case OP_HALT: return this.stack.length ? this.stack.pop() : nil();
@@ -247,8 +249,8 @@
         }
         case OP_SUB: { var sb = needNum(this.stack.pop()), sa = needNum(this.stack.pop()); this.stack.push(num(sa - sb)); break; }
         case OP_MUL: { var mb = needNum(this.stack.pop()), ma = needNum(this.stack.pop()); this.stack.push(num(ma * mb)); break; }
-        case OP_DIV: { var db = needNum(this.stack.pop()), da = needNum(this.stack.pop()); this.stack.push(num(da / db)); break; }
-        case OP_MOD: { var rb = needNum(this.stack.pop()), ra = needNum(this.stack.pop()); this.stack.push(num(ra % rb)); break; }
+        case OP_DIV: { var db = needNum(this.stack.pop()), da = needNum(this.stack.pop()); if(db===0) throw new Error("division by zero"); this.stack.push(num(da / db)); break; }
+        case OP_MOD: { var rb = needNum(this.stack.pop()), ra = needNum(this.stack.pop()); if(rb===0) throw new Error("modulo by zero"); this.stack.push(num(ra % rb)); break; }
         case OP_NEG: this.stack.push(num(-needNum(this.stack.pop()))); break;
         case OP_EQ: { var eb = this.stack.pop(), ea = this.stack.pop(); this.stack.push(bool(valueEqual(ea, eb))); break; }
         case OP_NEQ: { var nb = this.stack.pop(), na = this.stack.pop(); this.stack.push(bool(!valueEqual(na, nb))); break; }

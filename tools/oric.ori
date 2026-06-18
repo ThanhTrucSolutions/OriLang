@@ -180,6 +180,7 @@ fold tokenize(src) {
                     i = i + 1
                 }
             }
+            when i >= n { print("oric: unterminated string literal") }
             i = i + 1
             emit_tok(toks, TK_STR, sval, 0)
         } else {

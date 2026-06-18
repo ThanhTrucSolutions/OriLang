@@ -1,0 +1,83 @@
+// financy — live exchange rates (USD base)
+// Powered by open.er-api.com — free, no key required
+// Host intercepts "refresh" and calls dispatch("update", json_body)
+
+hold rates = []
+hold status = "Loading..."
+
+// Truncate a number string to N decimal places
+fold trunc4 s {
+    when s == "" { give s }
+    hold dot = 0 - 1
+    hold i = 0
+    loop i < len(s) {
+        when char_at(s, i) == "." { dot = i }
+        i = i + 1
+    }
+    when dot < 0 { give s }
+    when len(s) - dot - 1 <= 4 { give s }
+    give substr(s, 0, dot + 5)
+}
+
+// Extract "CURRENCY": NUMBER from open.er-api JSON rates block
+fold find_rate body cur {
+    hold search = "\"" + cur + "\":"
+    hold ki = 0
+    loop ki < len(body) {
+        when ki + len(search) <= len(body) && substr(body, ki, len(search)) == search {
+            hold vi = ki + len(search)
+            loop vi < len(body) && char_at(body, vi) == " " {
+                vi = vi + 1
+            }
+            hold end = vi
+            loop end < len(body) &&
+                 char_at(body, end) != "," &&
+                 char_at(body, end) != "}" &&
+                 char_at(body, end) != chr(10) {
+                end = end + 1
+            }
+            give trunc4(substr(body, vi, end - vi))
+        }
+        ki = ki + 1
+    }
+    give "N/A"
+}
+
+fold render {
+    hold nl = chr(10)
+    hold s = "text|Financy — Live Rates (1 USD)" + nl
+    s = s + "text|" + status + nl
+    s = s + "btn|refresh||Refresh" + nl
+    hold i = 0
+    loop i < len(rates) {
+        hold r = rates[i]
+        hold r0 = r[0]
+        hold r1 = r[1]
+        s = s + "item|noop|noop|" + str(i) + "|" + r0 + "  =  " + r1 + nl
+        i = i + 1
+    }
+    s = s + "text|Source: open.er-api.com" + nl
+    give s
+}
+
+fold dispatch ev arg {
+    when ev == "refresh" {
+        status = "Fetching live rates..."
+    } else when ev == "update" {
+        when len(arg) > 0 {
+            hold curs = ["VND", "EUR", "GBP", "JPY", "SGD", "THB", "AUD", "CNY", "KRW", "MYR", "HKD", "CAD"]
+            rates = []
+            hold i = 0
+            loop i < len(curs) {
+                hold cur = curs[i]
+                hold val = find_rate(arg, cur)
+                push(rates, [cur, val])
+                i = i + 1
+            }
+            status = "Updated  •  open.er-api.com"
+        } else {
+            status = "Error: cannot reach exchange rate API"
+        }
+    }
+    give render()
+}
