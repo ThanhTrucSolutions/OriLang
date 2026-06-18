@@ -695,6 +695,10 @@ static Value h_run(VM* vm, Value* a, int argc){
     if(argc<2||a[0].t!=V_STR||a[1].t!=V_ARR) return vnum(-1);
     Arr* ar=a[1].u.a;
     if(ar->len<0||ar->len>65535) rt_error("run: too many arguments (>65535)");
+    /* guard total argv size against ARG_MAX (~2MB on Linux) */
+    size_t total_arg_bytes=strlen(a[0].u.s->d)+1;
+    for(int i=0;i<ar->len;i++) total_arg_bytes+=(ar->it[i].t==V_STR?ar->it[i].u.s->len:0)+1;
+    if(total_arg_bytes>1048576) rt_error("run: total argument size exceeds 1MB");
     char** av=xmalloc(sizeof(char*)*(ar->len+2));
     av[0]=a[0].u.s->d;
     for(int i=0;i<ar->len;i++) av[i+1]=(ar->it[i].t==V_STR)?ar->it[i].u.s->d:"";
