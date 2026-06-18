@@ -616,7 +616,7 @@ static Value h_write_bytes(VM* vm, Value* a, int argc){
     if(argc<2||a[1].t!=V_ARR) rt_error("write_bytes(path, array)");
     Arr* arr=a[1].u.a;
     FILE* f=fopen(path->d,"wb"); if(!f) rt_error("write_bytes: cannot open file");
-    for(int i=0;i<arr->len;i++){ unsigned char c=(unsigned char)(int)arr->it[i].u.num; fputc(c,f); }
+    for(int i=0;i<arr->len;i++){ unsigned char c=(unsigned char)(arr->it[i].t==V_NUM?safe_int(arr->it[i].u.num)&0xFF:0); fputc(c,f); }
     fclose(f); return vnum(arr->len);
 }
 static Value h_write_file(VM* vm, Value* a, int argc){
