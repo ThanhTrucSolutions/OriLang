@@ -970,7 +970,9 @@ static Value h_http_serve(VM* vm, Value* a, int argc){
         int clen=0;
         {
             const char* h=req_buf;
-            while(h<req_buf+body_offset-16){
+            /* guard: body_offset-16 can underflow to negative offset → UB pointer */
+            const char* scan_end=(body_offset>16)?req_buf+body_offset-16:req_buf;
+            while(h<scan_end){
                 if((*h=='c'||*h=='C') &&
                    (h[1]=='o'||h[1]=='O') && (h[2]=='n'||h[2]=='N') &&
                    (h[3]=='t'||h[3]=='T') && (h[4]=='e'||h[4]=='E') &&
