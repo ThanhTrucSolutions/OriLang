@@ -7,7 +7,7 @@
 //    *.orb : a plain bytecode format (no crypto) — what the Ori-written compiler
 //            emits, so "Ori compiles Ori" and C runs it.
 //
-//  Build (Windows, from a VS dev shell):  cl /O2 orivm.c
+//  Build (Windows, from a VS dev shell):  cl /O2 /D_CRT_SECURE_NO_WARNINGS orivm.c
 //  Build (clang/gcc):                      cc -O2 -o orivm orivm.c -lm
 // ============================================================================
 #include <stdio.h>
