@@ -1,7 +1,0 @@
-name: web
-version: 1.0.0
-entry: ori/main.ori
-platform: web
-
-# `ori run samples/web` serves the WASM app with hot reload.
-dependencies:

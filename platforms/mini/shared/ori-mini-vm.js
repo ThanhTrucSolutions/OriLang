@@ -334,8 +334,8 @@
       ["num", function(args) {
         if (!args.length) return num(0);
         if (args[0].t === V_NUM) return args[0];
-        if (args[0].t === V_STR) { var n = parseFloat(args[0].v); return isNaN(n) ? nil() : num(n); }
-        return nil();
+        if (args[0].t === V_STR) { var n = parseFloat(args[0].v); return isNaN(n) ? num(0) : num(n); }
+        return num(0);
       }],
       ["len", function(args) {
         var v = args[0] || nil();

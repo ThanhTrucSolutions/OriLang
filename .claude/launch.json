@@ -2,52 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "oritodo",
-      "runtimeExecutable": "D:\\ThanhTrucSolutions\\Ori\\ori.exe",
-      "runtimeArgs": ["run", "todo"],
-      "port": 5151
+      "name": "ori-calc-ext",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5160", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\financial-calc\\build\\chrome-extension"],
+      "port": 5160
     },
     {
-      "name": "ori-web-crypto",
+      "name": "ori-calc-web",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5152", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\web\\build\\web"],
-      "port": 5152
-    },
-    {
-      "name": "ori-web-stocks",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5153", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\stocks\\build\\web"],
-      "port": 5153
-    },
-    {
-      "name": "ori-chrome-ext",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5154", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\crypto-tracker\\build\\chrome-extension"],
-      "port": 5154
-    },
-    {
-      "name": "ori-quick-notes",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5155", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\chrome-extension\\build\\chrome-extension"],
-      "port": 5155
-    },
-    {
-      "name": "ori-language",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5156", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\language\\build\\chrome-extension"],
-      "port": 5156
-    },
-    {
-      "name": "ori-web-ext",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5157", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\web\\build\\chrome-extension"],
-      "port": 5157
-    },
-    {
-      "name": "ori-todo-web",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5158", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\todo-web\\build\\web"],
-      "port": 5158
+      "runtimeArgs": ["-m", "http.server", "5161", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\financial-calc\\build\\web"],
+      "port": 5161
     }
   ]
 }

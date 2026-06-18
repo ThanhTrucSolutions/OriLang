@@ -1,0 +1,6 @@
+﻿hold a = 
+
+hold i = 0
+loop i < 4200000 { push(a, 1)
+i = i + 1
+}

@@ -1,7 +1,0 @@
-name: alipay-mini-program
-version: 1.0.0
-entry: ori/main.ori
-platform: alipay-mini-program
-
-# `ori build samples/alipay-mini-program` creates build/alipay-mini-program.
-dependencies:

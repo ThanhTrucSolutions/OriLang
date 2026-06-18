@@ -1,9 +1,0 @@
-name: desktop-macos
-version: 1.0.0
-entry: ori/main.ori
-platform: macos
-ui: window
-
-# A native macOS AppKit app. `ori build samples/desktop-macos` creates
-# samples/desktop-macos/build/macos/desktop-macos.app.
-dependencies:

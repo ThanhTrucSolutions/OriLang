@@ -32,7 +32,9 @@
 #include <dirent.h>
 #include <fnmatch.h>
 #if defined(__linux__) && !defined(__ANDROID__)
-#include <sys/random.h>
+#  include <sys/random.h>
+#elif defined(__ANDROID__)
+#  include <fcntl.h>
 #endif
 #ifndef __ANDROID__
 #include <glob.h>
@@ -332,8 +334,10 @@ static uint32_t mix_seed(){
     uint32_t s=0;
 #if defined(_WIN32)
     BCryptGenRandom(NULL,(PUCHAR)&s,sizeof(s),BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-#elif defined(__linux__) || defined(__APPLE__)
-    int _gr=getrandom(&s,sizeof(s),0); (void)_gr;
+#elif defined(__linux__) && !defined(__ANDROID__)
+    { int _gr=getrandom(&s,sizeof(s),0); (void)_gr; }
+#elif defined(__ANDROID__) || defined(__APPLE__)
+    { int _fd=open("/dev/urandom",O_RDONLY); if(_fd>=0){ read(_fd,&s,sizeof(s)); close(_fd); } }
 #endif
     if(s==0){
         s=(uint32_t)time(NULL);

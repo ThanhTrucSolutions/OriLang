@@ -1,7 +1,0 @@
-name: telegram-mini-app
-version: 1.0.0
-entry: ori/main.ori
-platform: telegram-mini-app
-
-# `ori build samples/telegram-mini-app` creates build/telegram-mini-app.
-dependencies:
