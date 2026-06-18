@@ -1127,7 +1127,11 @@ static Value h_json_escape(VM* vm, Value* a, int argc){
         else if(c=='\n'){ buf[bi++]='\\'; buf[bi++]='n'; }
         else if(c=='\r'){ buf[bi++]='\\'; buf[bi++]='r'; }
         else if(c=='\t'){ buf[bi++]='\\'; buf[bi++]='t'; }
-        else if(c<0x20){ /* skip control chars */ }
+        else if(c<0x20){ /* RFC 8259: escape all control chars as \u00XX */
+            buf[bi++]='\\'; buf[bi++]='u'; buf[bi++]='0'; buf[bi++]='0';
+            buf[bi++]="0123456789abcdef"[c>>4];
+            buf[bi++]="0123456789abcdef"[c&0xF];
+        }
         else { buf[bi++]=(char)c; }
     }
     buf[bi]=0;
@@ -1219,6 +1223,9 @@ static Value h_http_delete(VM* vm, Value* a, int argc){
     return vstr_n(buf,(int)total);
 }
 
+/* max dir path length for store functions — keeps path[1024] buffer safe */
+#define STORE_DIR_MAX 900
+
 /* sanitize a store id: only allow [0-9A-Za-z_-], max 63 chars.
    Returns 0 if id is safe, -1 if it contains path-traversal chars. */
 static int store_id_safe(Value* v, char* out, int outsz){
@@ -1250,6 +1257,7 @@ static Value h_store_next_id(VM* vm, Value* a, int argc){
 // store_set(dir, id, json) — write a record; creates dir if needed
 static Value h_store_set(VM* vm, Value* a, int argc){
     if(argc<3||a[0].t!=V_STR||a[2].t!=V_STR) return vnum(0);
+    if(a[0].u.s->len>STORE_DIR_MAX) return vnum(0);
     const char* dir=a[0].u.s->d;
     char id_s[64]; if(store_id_safe(&a[1],id_s,sizeof id_s)<0) return vnum(0);
     ori_mkdirs(dir);
@@ -1261,6 +1269,7 @@ static Value h_store_set(VM* vm, Value* a, int argc){
 // store_get(dir, id) — read a record; returns "" if not found
 static Value h_store_get(VM* vm, Value* a, int argc){
     if(argc<2||a[0].t!=V_STR) return vstr("");
+    if(a[0].u.s->len>STORE_DIR_MAX) return vstr("");
     char id_s[64]; if(store_id_safe(&a[1],id_s,sizeof id_s)<0) return vstr("");
     char path[1024]; snprintf(path,sizeof path,"%s/%s.json",a[0].u.s->d,id_s);
     FILE* f=fopen(path,"rb"); if(!f) return vstr("");
@@ -1273,6 +1282,7 @@ static Value h_store_get(VM* vm, Value* a, int argc){
 // store_delete(dir, id) — delete a record; returns 1 if deleted
 static Value h_store_delete(VM* vm, Value* a, int argc){
     if(argc<2||a[0].t!=V_STR) return vnum(0);
+    if(a[0].u.s->len>STORE_DIR_MAX) return vnum(0);
     char id_s[64]; if(store_id_safe(&a[1],id_s,sizeof id_s)<0) return vnum(0);
     char path[1024]; snprintf(path,sizeof path,"%s/%s.json",a[0].u.s->d,id_s);
     return vnum(remove(path)==0?1:0);
@@ -1282,6 +1292,7 @@ static Value h_store_delete(VM* vm, Value* a, int argc){
 #define STORE_LIST_MAX 10000
 static Value h_store_list(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return varr_new();
+    if(a[0].u.s->len>STORE_DIR_MAX) return varr_new();
     const char* dir=a[0].u.s->d;
     Value arr=varr_new();
     int count=0;
