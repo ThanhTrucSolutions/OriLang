@@ -720,6 +720,21 @@ static Value h_run(VM* vm, Value* a, int argc){
 #endif
 #endif
 }
+/* Returns 1 if path contains a ".." component — catches /../ ..\ leading ../ etc. */
+static int has_dotdot(const char* path){
+    const char* p=path;
+    while(*p){
+        if(p[0]=='.'&&p[1]=='.'){
+            int at_start=(p==path)||(p[-1]=='/'||p[-1]=='\\');
+            char after=p[2];
+            int at_end=(after=='/'||after=='\\'||after=='\0');
+            if(at_start&&at_end) return 1;
+        }
+        p++;
+    }
+    return 0;
+}
+
 static void ori_mkdirs(const char* path){
     char tmp[1024]; strncpy(tmp,path,sizeof tmp-1); tmp[sizeof tmp-1]=0;
     for(char* p=tmp+1; *p; p++){
@@ -740,11 +755,13 @@ static void ori_mkdirs(const char* path){
 }
 static Value h_mkdirs(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vnum(0);
+    if(has_dotdot(a[0].u.s->d)){ fprintf(stderr,"[Ori] mkdirs: path traversal rejected\n"); return vnum(0); }
     ori_mkdirs(a[0].u.s->d);
     return vnum(1);
 }
 static Value h_copy(VM* vm, Value* a, int argc){
     if(argc<2||a[0].t!=V_STR||a[1].t!=V_STR) return vnum(0);
+    if(has_dotdot(a[0].u.s->d)||has_dotdot(a[1].u.s->d)){ fprintf(stderr,"[Ori] copy: path traversal rejected\n"); return vnum(0); }
     FILE* s=fopen(a[0].u.s->d,"rb"); if(!s) return vnum(0);
     FILE* d=fopen(a[1].u.s->d,"wb"); if(!d){ fclose(s); return vnum(0); }
     char buf[8192]; size_t r;

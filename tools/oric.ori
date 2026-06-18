@@ -398,7 +398,11 @@ fold parse_give() {
 }
 fold parse_expr() {
     C_PARSE_DEPTH = C_PARSE_DEPTH + 1
-    when C_PARSE_DEPTH > 200 { print("oric: expression nested too deep (>200 levels)") }
+    when C_PARSE_DEPTH > 200 {
+        say("oric: expression nested too deep (>200 levels) -- aborting")
+        C_PARSE_DEPTH = 0
+        give [N_NUM, 0]
+    }
     hold r = parse_assign()
     C_PARSE_DEPTH = C_PARSE_DEPTH - 1
     give r
