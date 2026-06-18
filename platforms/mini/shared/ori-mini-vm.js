@@ -243,12 +243,15 @@
             var cat = display(a) + display(b);
             if (cat.length > 0x3FFFFF0) throw new Error("string too large (>64MB)");
             this.stack.push(str(cat));
-          } else if (a.t === V_NUM && b.t === V_NUM) this.stack.push(num(a.v + b.v));
-          else throw new Error("cannot add these types");
+          } else if (a.t === V_NUM && b.t === V_NUM) {
+            var ar = a.v + b.v;
+            if (!isFinite(ar)) throw new Error("arithmetic result is NaN or Inf");
+            this.stack.push(num(ar));
+          } else throw new Error("cannot add these types");
           break;
         }
-        case OP_SUB: { var sb = needNum(this.stack.pop()), sa = needNum(this.stack.pop()); this.stack.push(num(sa - sb)); break; }
-        case OP_MUL: { var mb = needNum(this.stack.pop()), ma = needNum(this.stack.pop()); this.stack.push(num(ma * mb)); break; }
+        case OP_SUB: { var sb = needNum(this.stack.pop()), sa = needNum(this.stack.pop()); var sr = sa - sb; if(!isFinite(sr)) throw new Error("arithmetic result is NaN or Inf"); this.stack.push(num(sr)); break; }
+        case OP_MUL: { var mb = needNum(this.stack.pop()), ma = needNum(this.stack.pop()); var mr = ma * mb; if(!isFinite(mr)) throw new Error("arithmetic result is NaN or Inf"); this.stack.push(num(mr)); break; }
         case OP_DIV: { var db = needNum(this.stack.pop()), da = needNum(this.stack.pop()); if(db===0) throw new Error("division by zero"); this.stack.push(num(da / db)); break; }
         case OP_MOD: { var rb = needNum(this.stack.pop()), ra = needNum(this.stack.pop()); if(rb===0) throw new Error("modulo by zero"); this.stack.push(num(ra % rb)); break; }
         case OP_NEG: this.stack.push(num(-needNum(this.stack.pop()))); break;

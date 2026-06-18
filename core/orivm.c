@@ -467,9 +467,10 @@ static void do_call(VM* vm, int argc){
     free(args);
 }
 
+static void check_finite(double r){ if(isnan(r)||isinf(r)) rt_error("arithmetic result is NaN or Inf"); }
 static Value bin_add(Value a, Value b){
     if(a.t==V_STR||b.t==V_STR){ Sb s; sb_init(&s); val_display(&s,a); val_display(&s,b); return vstr_n(s.d,s.len); }
-    if(a.t==V_NUM&&b.t==V_NUM) return vnum(a.u.num+b.u.num);
+    if(a.t==V_NUM&&b.t==V_NUM){ double r=a.u.num+b.u.num; check_finite(r); return vnum(r); }
     rt_error("cannot add these types"); return vnil();
 }
 static double need_num(Value v){ if(v.t!=V_NUM) rt_error("arithmetic requires numbers"); return v.u.num; }
@@ -509,8 +510,8 @@ static Value run(VM* vm){
                     if(ins.arg<0||ins.arg>=fr->localsCount) rt_error("local slot out of range");
                     fr->locals[ins.arg]=pop(vm); break;
                 case OP_ADD: { Value b=pop(vm),a=pop(vm); push(vm,bin_add(a,b)); break; }
-                case OP_SUB: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a-b)); break; }
-                case OP_MUL: { double b=need_num(pop(vm)),a=need_num(pop(vm)); push(vm,vnum(a*b)); break; }
+                case OP_SUB: { double b=need_num(pop(vm)),a=need_num(pop(vm)); double rs=a-b; check_finite(rs); push(vm,vnum(rs)); break; }
+                case OP_MUL: { double b=need_num(pop(vm)),a=need_num(pop(vm)); double rm=a*b; check_finite(rm); push(vm,vnum(rm)); break; }
                 case OP_DIV: { double b=need_num(pop(vm)),a=need_num(pop(vm)); if(b==0) rt_error("division by zero"); push(vm,vnum(a/b)); break; }
                 case OP_MOD: { double b=need_num(pop(vm)),a=need_num(pop(vm)); if(b==0) rt_error("modulo by zero"); push(vm,vnum(fmod(a,b))); break; }
                 case OP_NEG: { double a=need_num(pop(vm)); push(vm,vnum(-a)); break; }
@@ -646,11 +647,12 @@ static Value h_argv(VM* vm, Value* a, int argc){ int i=(int)argnum(a,argc,0); if
 // ---- OS / build host functions (so the toolchain can be written in Ori) ----
 static Value h_env(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_STR) return vstr(""); char* e=getenv(a[0].u.s->d); return vstr(e?e:""); }
 static Value h_exists(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_STR) return vnum(0); struct stat st; return vnum(stat(a[0].u.s->d,&st)==0?1:0); }
-/* DANGER: bare system() — never expose in server or networked Ori runtime */
+/* DANGER: bare system() — compile with -DORI_NO_SHELL to disable in networked contexts */
 static Value h_sh(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_STR) return vnum(-1);
     if(a[0].u.s->len > 65535) rt_error("sh: command too long (>64KB)");
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if defined(ORI_NO_SHELL) || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+    rt_error("sh: disabled in this build (ORI_NO_SHELL)");
     return vnum(-1);
 #else
     fflush(stdout); return vnum((double)system(a[0].u.s->d));
