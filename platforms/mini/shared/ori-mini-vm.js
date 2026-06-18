@@ -177,6 +177,8 @@
   };
 
   OriVM.prototype.doCall = function(argc) {
+    if (this.frames.length >= 2000) throw new Error("stack overflow");
+    if (argc < 0 || argc > 65535) throw new Error("bad call argc");
     var args = new Array(argc);
     for (var i = argc - 1; i >= 0; i--) args[i] = this.stack.pop();
     var callee = this.stack.pop();
@@ -202,7 +204,10 @@
       var ins = fn.code[fr.ip++];
       switch (ins.op) {
         case OP_HALT: return this.stack.length ? this.stack.pop() : nil();
-        case OP_PUSHCONST: this.stack.push(this.program.constants[ins.arg]); break;
+        case OP_PUSHCONST: {
+          if (ins.arg < 0 || ins.arg >= this.program.constants.length) throw new Error("constant index out of range");
+          this.stack.push(this.program.constants[ins.arg]); break;
+        }
         case OP_PUSHINT: this.stack.push(num(ins.arg)); break;
         case OP_PUSHNIL: this.stack.push(nil()); break;
         case OP_PUSHTRUE: this.stack.push(bool(true)); break;
@@ -219,8 +224,11 @@
         case OP_STORELOCAL: fr.locals[ins.arg] = this.stack.pop(); break;
         case OP_ADD: {
           var b = this.stack.pop(), a = this.stack.pop();
-          if (a.t === V_STR || b.t === V_STR) this.stack.push(str(display(a) + display(b)));
-          else if (a.t === V_NUM && b.t === V_NUM) this.stack.push(num(a.v + b.v));
+          if (a.t === V_STR || b.t === V_STR) {
+            var cat = display(a) + display(b);
+            if (cat.length > 0x3FFFFF0) throw new Error("string too large (>64MB)");
+            this.stack.push(str(cat));
+          } else if (a.t === V_NUM && b.t === V_NUM) this.stack.push(num(a.v + b.v));
           else throw new Error("cannot add these types");
           break;
         }
@@ -236,9 +244,9 @@
         case OP_LE: { var leb = needNum(this.stack.pop()), lea = needNum(this.stack.pop()); this.stack.push(bool(lea <= leb)); break; }
         case OP_GE: { var geb = needNum(this.stack.pop()), gea = needNum(this.stack.pop()); this.stack.push(bool(gea >= geb)); break; }
         case OP_NOT: this.stack.push(bool(!isTruthy(this.stack.pop()))); break;
-        case OP_JMP: fr.ip = ins.arg; break;
-        case OP_JMPIFFALSE: if (!isTruthy(this.stack.pop())) fr.ip = ins.arg; break;
-        case OP_JMPIFTRUE: if (isTruthy(this.stack.pop())) fr.ip = ins.arg; break;
+        case OP_JMP: if (ins.arg < 0 || ins.arg > fn.code.length) throw new Error("bad jump target"); fr.ip = ins.arg; break;
+        case OP_JMPIFFALSE: { var jf = isTruthy(this.stack.pop()); if (!jf) { if (ins.arg < 0 || ins.arg > fn.code.length) throw new Error("bad jump target"); fr.ip = ins.arg; } break; }
+        case OP_JMPIFTRUE:  { var jt = isTruthy(this.stack.pop()); if (jt)  { if (ins.arg < 0 || ins.arg > fn.code.length) throw new Error("bad jump target"); fr.ip = ins.arg; } break; }
         case OP_CALL: this.doCall(ins.arg); break;
         case OP_RET: {
           var res = this.stack.length ? this.stack.pop() : nil();
@@ -248,6 +256,7 @@
           break;
         }
         case OP_MAKEARRAY: {
+          if (ins.arg < 0 || ins.arg > 65535) throw new Error("bad MAKEARRAY count");
           var out = [];
           for (var ai = 0; ai < ins.arg; ai++) out.unshift(this.stack.pop());
           this.stack.push(arr(out));
@@ -274,6 +283,7 @@
   };
 
   OriVM.prototype.call = function(fname, arg) {
+    if (this.frames.length >= 2000) return "";
     var f = this.globals[fname];
     if (!f || f.t !== V_FUNC) return "";
     this.pushFrame(f.v, [str(arg || "")]);
@@ -281,6 +291,7 @@
   };
 
   OriVM.prototype.call2 = function(fname, a1, a2) {
+    if (this.frames.length >= 2000) return "";
     var f = this.globals[fname];
     if (!f || f.t !== V_FUNC) return "";
     this.pushFrame(f.v, [str(a1 || ""), str(a2 || "")]);
@@ -313,7 +324,7 @@
         if (v.t === V_STR || v.t === V_ARR) return num(v.v.length);
         throw new Error("len() expects a string or array");
       }],
-      ["push", function(args) { if (!args[0] || args[0].t !== V_ARR) throw new Error("push(array,value)"); args[0].v.push(args[1] || nil()); return num(args[0].v.length); }],
+      ["push", function(args) { if (!args[0] || args[0].t !== V_ARR) throw new Error("push(array,value)"); if (args[0].v.length >= 0x400000) throw new Error("array too large (>4M)"); args[0].v.push(args[1] || nil()); return num(args[0].v.length); }],
       ["pop", function(args) { if (!args[0] || args[0].t !== V_ARR || !args[0].v.length) throw new Error("pop(array)"); return args[0].v.pop(); }],
       ["char_at", function(args) { var s = argStr(args, 0), i = argNum(args, 1) | 0; return str(i < 0 || i >= s.length ? "" : s.charAt(i)); }],
       ["ord", function(args) { var s = argStr(args, 0); return num(s.length ? (s.charCodeAt(0) & 255) : -1); }],
