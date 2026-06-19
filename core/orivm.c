@@ -17,6 +17,7 @@
 #include <math.h>
 #include <time.h>
 #include <errno.h>
+#include <setjmp.h>
 #include <sys/stat.h>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -454,7 +455,17 @@ static void push(VM* vm, Value v){
 }
 static Value pop(VM* vm){ if(vm->sp<=0) rt_error("stack underflow"); return vm->stack[--vm->sp]; }
 
-static void rt_error(const char* msg){ fprintf(stderr,"[Ori runtime error] %s\n",msg); exit(4); }
+/* Recoverable-error support: when g_err_jmp is non-NULL, rt_error longjmps to it
+   (so an embedded host — HTTP server, GUI/web callback — can survive a handler
+   error instead of taking down the whole process). NULL → exit() as before (CLI). */
+static jmp_buf* g_err_jmp = NULL;
+static char g_err_msg[256];
+
+static void rt_error(const char* msg){
+    fprintf(stderr,"[Ori runtime error] %s\n",msg);
+    if(g_err_jmp){ snprintf(g_err_msg,sizeof g_err_msg,"%s",msg); longjmp(*g_err_jmp,1); }
+    exit(4);
+}
 
 static int safe_int(double d){
     if(d>=2147483647.0) return 2147483647;
@@ -1004,9 +1015,21 @@ static Value h_http_serve(VM* vm, Value* a, int argc){
            may have captured them into a global (no ref-counting in this VM). The leak
            is bounded: ~path+body bytes per request (~4 KB typical). */
         int saved_fp=vm->fp;
-        Value args[2]; args[0]=vstr(route); args[1]=vstr(body);
-        push_frame(vm,fn_idx,args,2);
-        Value resp=run_until(vm,saved_fp);
+        int saved_sp=vm->sp;
+        jmp_buf jb; jmp_buf* prev_jmp=g_err_jmp; g_err_jmp=&jb;
+        Value resp;
+        if(setjmp(jb)==0){
+            Value args[2]; args[0]=vstr(route); args[1]=vstr(body);
+            push_frame(vm,fn_idx,args,2);
+            resp=run_until(vm,saved_fp);
+        } else {
+            /* handler hit rt_error: unwind leaked frames + reset stacks, keep serving */
+            while(vm->fp>saved_fp){ vm->fp--; free(vm->frames[vm->fp].locals); }
+            vm->sp=saved_sp;
+            char eb[320]; snprintf(eb,sizeof eb,"{\"error\":\"internal error\",\"detail\":\"%s\"}",g_err_msg);
+            resp=vstr(eb);
+        }
+        g_err_jmp=prev_jmp;
         char* resp_s=val_cstr(resp); size_t resp_len=strlen(resp_s);
         /* detect content type */
         const char* ct="application/json";
@@ -1601,11 +1624,21 @@ char* ori_call_str(const char* fname, const char* arg){
     Value f;
     if(!g_get(&gvm, fname, &f) || f.t!=V_FUNC) return dupstr("");
     if(gvm.fp >= 2000) return dupstr("");
-    Value a = vstr(arg ? arg : "");
-    push_frame(&gvm, f.u.i, &a, 1);
-    Value r = run(&gvm);
-    if(r.t==V_STR) return dupstr(r.u.s->d);
-    return val_cstr(r);
+    int saved_fp=gvm.fp, saved_sp=gvm.sp;
+    jmp_buf jb; jmp_buf* prev_jmp=g_err_jmp; g_err_jmp=&jb;
+    char* out;
+    if(setjmp(jb)==0){
+        Value a = vstr(arg ? arg : "");
+        push_frame(&gvm, f.u.i, &a, 1);
+        Value r = run_until(&gvm, saved_fp);
+        out = (r.t==V_STR) ? dupstr(r.u.s->d) : val_cstr(r);
+    } else {
+        while(gvm.fp>saved_fp){ gvm.fp--; free(gvm.frames[gvm.fp].locals); }
+        gvm.sp=saved_sp;
+        out = dupstr("");
+    }
+    g_err_jmp=prev_jmp;
+    return out;
 }
 
 // Call an Ori function with two string args (e.g. dispatch(event, arg)).
@@ -1614,11 +1647,21 @@ char* ori_call2(const char* fname, const char* a1, const char* a2){
     Value f;
     if(!g_get(&gvm, fname, &f) || f.t!=V_FUNC) return dupstr("");
     if(gvm.fp >= 2000) return dupstr("");
-    Value args[2]; args[0]=vstr(a1?a1:""); args[1]=vstr(a2?a2:"");
-    push_frame(&gvm, f.u.i, args, 2);
-    Value r = run(&gvm);
-    if(r.t==V_STR) return dupstr(r.u.s->d);
-    return val_cstr(r);
+    int saved_fp=gvm.fp, saved_sp=gvm.sp;
+    jmp_buf jb; jmp_buf* prev_jmp=g_err_jmp; g_err_jmp=&jb;
+    char* out;
+    if(setjmp(jb)==0){
+        Value args[2]; args[0]=vstr(a1?a1:""); args[1]=vstr(a2?a2:"");
+        push_frame(&gvm, f.u.i, args, 2);
+        Value r = run_until(&gvm, saved_fp);
+        out = (r.t==V_STR) ? dupstr(r.u.s->d) : val_cstr(r);
+    } else {
+        while(gvm.fp>saved_fp){ gvm.fp--; free(gvm.frames[gvm.fp].locals); }
+        gvm.sp=saved_sp;
+        out = dupstr("");
+    }
+    g_err_jmp=prev_jmp;
+    return out;
 }
 
 #ifndef ORI_AS_LIB
