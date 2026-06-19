@@ -496,13 +496,14 @@ static void do_call(VM* vm, int argc){
     for(int i=argc-1;i>=0;i--) args[i]=pop(vm);
     Value callee=pop(vm);
     if(callee.t==V_FUNC){
+        if(callee.u.i<0||callee.u.i>=vm->prog->funcCount){ free(args); rt_error("invalid function index"); }
         Func* fn=&vm->prog->funcs[callee.u.i];
-        if(argc!=fn->arity){ char m[96]; snprintf(m,sizeof m,"%s() expects %d arg(s) but got %d",fn->name,fn->arity,argc); rt_error(m); }
+        if(argc!=fn->arity){ char m[96]; snprintf(m,sizeof m,"%s() expects %d arg(s) but got %d",fn->name,fn->arity,argc); free(args); rt_error(m); }
         push_frame(vm,callee.u.i,args,argc);
     } else if(callee.t==V_HOST){
-        if(callee.u.i<0||callee.u.i>=vm->hostCount) rt_error("invalid host function index");
+        if(callee.u.i<0||callee.u.i>=vm->hostCount){ free(args); rt_error("invalid host function index"); }
         push(vm, vm->hostFns[callee.u.i](vm,args,argc));
-    } else rt_error("value is not callable");
+    } else { free(args); rt_error("value is not callable"); }
     free(args);
 }
 
