@@ -1383,7 +1383,8 @@ static MYSQL* g_db[ORI_DB_MAX];
 static Value h_db_connect(VM* vm, Value* a, int argc){
     if(argc<5) return vnum(0);
     const char* host=a[0].t==V_STR?a[0].u.s->d:"localhost";
-    int port=a[1].t==V_NUM?(int)a[1].u.num:3306;
+    int port=a[1].t==V_NUM?safe_int(a[1].u.num):3306;
+    if(port<1||port>65535) port=3306;
     const char* user=a[2].t==V_STR?a[2].u.s->d:"root";
     const char* pass=a[3].t==V_STR?a[3].u.s->d:"";
     const char* db=a[4].t==V_STR?a[4].u.s->d:"";
@@ -1402,8 +1403,9 @@ static Value h_db_connect(VM* vm, Value* a, int argc){
 
 static Value h_db_exec(VM* vm, Value* a, int argc){
     if(argc<2||a[0].t!=V_NUM||a[1].t!=V_STR) return vnum(-1);
-    int slot=(int)a[0].u.num-1;
-    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return vnum(-1);
+    int h=safe_int(a[0].u.num);
+    if(h<1||h>ORI_DB_MAX||!g_db[h-1]) return vnum(-1);
+    int slot=h-1;
     if(mysql_query(g_db[slot],a[1].u.s->d)){
         fprintf(stderr,"[Ori] db_exec error: %s\n",mysql_error(g_db[slot])); return vnum(-1);
     }
@@ -1413,8 +1415,9 @@ static Value h_db_exec(VM* vm, Value* a, int argc){
 static Value h_db_query(VM* vm, Value* a, int argc){
     Value arr=varr_new();
     if(argc<2||a[0].t!=V_NUM||a[1].t!=V_STR) return arr;
-    int slot=(int)a[0].u.num-1;
-    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return arr;
+    int h=safe_int(a[0].u.num);
+    if(h<1||h>ORI_DB_MAX||!g_db[h-1]) return arr;
+    int slot=h-1;
     if(mysql_query(g_db[slot],a[1].u.s->d)){
         fprintf(stderr,"[Ori] db_query error: %s\n",mysql_error(g_db[slot])); return arr;
     }
@@ -1451,32 +1454,36 @@ static Value h_db_query(VM* vm, Value* a, int argc){
 
 static Value h_db_escape(VM* vm, Value* a, int argc){
     if(argc<2||a[0].t!=V_NUM||a[1].t!=V_STR) return vstr("");
-    int slot=(int)a[0].u.num-1;
-    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return vstr("");
+    int h=safe_int(a[0].u.num);
+    if(h<1||h>ORI_DB_MAX||!g_db[h-1]) return vstr("");
+    int slot=h-1;
     Str* s=a[1].u.s;
-    char* buf=(char*)xmalloc(s->len*2+1);
+    char* buf=(char*)xmalloc((size_t)s->len*2+1);
     mysql_real_escape_string(g_db[slot],buf,s->d,(unsigned long)s->len);
     Value v=vstr(buf); free(buf); return v;
 }
 
 static Value h_db_last_id(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_NUM) return vnum(0);
-    int slot=(int)a[0].u.num-1;
-    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return vnum(0);
+    int h=safe_int(a[0].u.num);
+    if(h<1||h>ORI_DB_MAX||!g_db[h-1]) return vnum(0);
+    int slot=h-1;
     return vnum((double)mysql_insert_id(g_db[slot]));
 }
 
 static Value h_db_error(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_NUM) return vstr("");
-    int slot=(int)a[0].u.num-1;
-    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return vstr("");
+    int h=safe_int(a[0].u.num);
+    if(h<1||h>ORI_DB_MAX||!g_db[h-1]) return vstr("");
+    int slot=h-1;
     return vstr(mysql_error(g_db[slot]));
 }
 
 static Value h_db_close(VM* vm, Value* a, int argc){
     if(argc<1||a[0].t!=V_NUM) return vnil();
-    int slot=(int)a[0].u.num-1;
-    if(slot<0||slot>=ORI_DB_MAX||!g_db[slot]) return vnil();
+    int h=safe_int(a[0].u.num);
+    if(h<1||h>ORI_DB_MAX||!g_db[h-1]) return vnil();
+    int slot=h-1;
     mysql_close(g_db[slot]); g_db[slot]=NULL; return vnil();
 }
 #else
