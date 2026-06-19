@@ -32,7 +32,17 @@ static void clear_children(HWND hwnd){
     g_edit = NULL; g_nact = 0;
 }
 
-static void mkfont(HWND h){ SendMessageA(h, WM_SETFONT, (WPARAM)g_font, TRUE); }
+static void mkfont(HWND h){ SendMessageW(h, WM_SETFONT, (WPARAM)g_font, TRUE); }
+
+// UTF-8 (Ori strings) -> UTF-16 so Win32 W APIs render Unicode correctly.
+static wchar_t* u8tow(const char* s, wchar_t* buf, int cap){
+    if(MultiByteToWideChar(CP_UTF8, 0, s, -1, buf, cap) <= 0) buf[0]=0;
+    return buf;
+}
+// UTF-16 (edit-field text) -> UTF-8 for handing back to the Ori VM.
+static void wtou8(const wchar_t* w, char* buf, int cap){
+    if(WideCharToMultiByte(CP_UTF8, 0, w, -1, buf, cap, NULL, NULL) <= 0) buf[0]=0;
+}
 
 // next "|" field into out; returns pointer past the separator (or to end).
 static const char* field(const char* p, char* out, int cap){
@@ -51,29 +61,33 @@ static void build(const char* spec){
         if(len > 0){
             char line[1024]; if(len>1000) len=1000; memcpy(line,p,len); line[len]=0;
             char type[16]; const char* q = field(line, type, sizeof type);
+            wchar_t wbuf[1024];
             if(strcmp(type,"text")==0){
-                HWND h=CreateWindowA("STATIC", q, WS_CHILD|WS_VISIBLE, 16,y,440,22, g_hwnd,0,0,0);
+                HWND h=CreateWindowW(L"STATIC", u8tow(q,wbuf,1024), WS_CHILD|WS_VISIBLE, 16,y,440,22, g_hwnd,0,0,0);
                 mkfont(h); y+=28;
             } else if(strcmp(type,"edit")==0){
                 char ph[256]; field(q, ph, sizeof ph);
-                g_edit=CreateWindowA("EDIT", "", WS_CHILD|WS_VISIBLE|WS_BORDER|ES_AUTOHSCROLL, 16,y,440,28, g_hwnd,(HMENU)(INT_PTR)ID_EDIT,0,0);
-                mkfont(g_edit); SetWindowTextA(g_edit, ph); y+=36;
+                g_edit=CreateWindowW(L"EDIT", L"", WS_CHILD|WS_VISIBLE|WS_BORDER|ES_AUTOHSCROLL, 16,y,440,28, g_hwnd,(HMENU)(INT_PTR)ID_EDIT,0,0);
+                mkfont(g_edit); SetWindowTextW(g_edit, u8tow(ph,wbuf,1024)); y+=36;
             } else if(strcmp(type,"btn")==0){
                 char ev[64], arg[512], cap[512];
                 q=field(q,ev,sizeof ev); q=field(q,arg,sizeof arg); field(q,cap,sizeof cap);
+                if(g_nact >= MAXACT) goto next_line;
                 int id=ID_BASE+g_nact; strcpy(g_ev[g_nact],ev); strcpy(g_arg[g_nact],arg); g_argIsEdit[g_nact]=(strcmp(arg,"@edit")==0); g_nact++;
-                HWND h=CreateWindowA("BUTTON", cap, WS_CHILD|WS_VISIBLE, 16,y,440,30, g_hwnd,(HMENU)(INT_PTR)id,0,0);
+                HWND h=CreateWindowW(L"BUTTON", u8tow(cap,wbuf,1024), WS_CHILD|WS_VISIBLE, 16,y,440,30, g_hwnd,(HMENU)(INT_PTR)id,0,0);
                 mkfont(h); y+=38;
             } else if(strcmp(type,"item")==0){
                 char tap[64], del[64], arg[512], cap[512];
                 q=field(q,tap,sizeof tap); q=field(q,del,sizeof del); q=field(q,arg,sizeof arg); field(q,cap,sizeof cap);
+                if(g_nact+1 >= MAXACT) goto next_line;
                 int idT=ID_BASE+g_nact; strcpy(g_ev[g_nact],tap); strcpy(g_arg[g_nact],arg); g_argIsEdit[g_nact]=0; g_nact++;
                 int idD=ID_BASE+g_nact; strcpy(g_ev[g_nact],del); strcpy(g_arg[g_nact],arg); g_argIsEdit[g_nact]=0; g_nact++;
-                HWND h1=CreateWindowA("BUTTON", cap, WS_CHILD|WS_VISIBLE|BS_LEFT, 16,y,360,32, g_hwnd,(HMENU)(INT_PTR)idT,0,0);
-                HWND h2=CreateWindowA("BUTTON", "X", WS_CHILD|WS_VISIBLE, 384,y,72,32, g_hwnd,(HMENU)(INT_PTR)idD,0,0);
+                HWND h1=CreateWindowW(L"BUTTON", u8tow(cap,wbuf,1024), WS_CHILD|WS_VISIBLE|BS_LEFT, 16,y,360,32, g_hwnd,(HMENU)(INT_PTR)idT,0,0);
+                HWND h2=CreateWindowW(L"BUTTON", L"X", WS_CHILD|WS_VISIBLE, 384,y,72,32, g_hwnd,(HMENU)(INT_PTR)idD,0,0);
                 mkfont(h1); mkfont(h2); y+=40;
             }
         }
+        next_line:
         if(!nl) break;
         p = nl+1;
     }
@@ -82,7 +96,10 @@ static void build(const char* spec){
 
 static void fire(int actIndex){
     char arg[512];
-    if(g_argIsEdit[actIndex] && g_edit){ GetWindowTextA(g_edit, arg, sizeof arg); }
+    if(g_argIsEdit[actIndex] && g_edit){
+        wchar_t warg[512]; GetWindowTextW(g_edit, warg, 512);
+        wtou8(warg, arg, sizeof arg);
+    }
     else { strncpy(arg, g_arg[actIndex], sizeof arg-1); arg[sizeof arg-1]=0; }
     char* ui = ori_call2("dispatch", g_ev[actIndex], arg);
     build(ui);
@@ -97,19 +114,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp){
         }
         case WM_DESTROY: PostQuitMessage(0); return 0;
     }
-    return DefWindowProcA(hwnd, msg, wp, lp);
+    return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow){
-    if(__argc < 2){ MessageBoxA(0,"usage: oriwin.exe <app.orb>","Ori",MB_OK); return 1; }
-    if(ori_boot(__argv[1], 0, NULL) != 0){ MessageBoxA(0,"failed to load Ori image","Ori",MB_OK); return 1; }
+    if(__argc < 2){ MessageBoxW(0,L"usage: oriwin.exe <app.orb>",L"Ori",MB_OK); return 1; }
+    if(ori_boot(__argv[1], 0, NULL) != 0){ MessageBoxW(0,L"failed to load Ori image",L"Ori",MB_OK); return 1; }
 
-    g_font = (HWND)CreateFontA(-16,0,0,0,FW_NORMAL,0,0,0,DEFAULT_CHARSET,0,0,CLEARTYPE_QUALITY,0,"Segoe UI");
-    WNDCLASSA wc = {0};
-    wc.lpfnWndProc = WndProc; wc.hInstance = hInst; wc.lpszClassName = "OriWinClass";
+    g_font = (HWND)CreateFontW(-16,0,0,0,FW_NORMAL,0,0,0,DEFAULT_CHARSET,0,0,CLEARTYPE_QUALITY,0,L"Segoe UI");
+    WNDCLASSW wc = {0};
+    wc.lpfnWndProc = WndProc; wc.hInstance = hInst; wc.lpszClassName = L"OriWinClass";
     wc.hCursor = LoadCursor(0, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
-    RegisterClassA(&wc);
-    g_hwnd = CreateWindowA("OriWinClass","Ori app",
+    RegisterClassW(&wc);
+    g_hwnd = CreateWindowW(L"OriWinClass",L"Ori app",
         WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX,
         CW_USEDEFAULT,CW_USEDEFAULT,492,560,0,0,hInst,0);
 
