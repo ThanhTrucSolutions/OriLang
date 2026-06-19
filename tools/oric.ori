@@ -494,8 +494,12 @@ fold parse_postfix() {
             hold idx = parse_expr()
             p_eat_sym("]")
             e = [N_INDEX, e, idx]
-        } else when starts_arg() && e[0] == N_VAR {
+        } else when starts_arg() && e[0] == N_VAR && p_get_arity(e[1]) >= 0 {
             // paren-free application:  f a b   ->   call f with atom args
+            // Only when e[1] is a KNOWN function (declared arity >= 0); a bare
+            // non-function variable must NOT swallow a following token, otherwise
+            // two statements on one line like "a = b * j  j = j + 1" miscompile
+            // (the trailing j would eat the next statement's j).
             hold args = []
             hold arity = p_get_arity(e[1])
             when arity == 1 {
