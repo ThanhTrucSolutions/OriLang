@@ -2,15 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "ori-calc-ext",
+      "name": "ori-todo-web",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5160", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\financial-calc\\build\\chrome-extension"],
-      "port": 5160
-    },
-    {
-      "name": "ori-calc-web",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5161", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\financial-calc\\build\\web"],
+      "runtimeArgs": ["-m", "http.server", "5161", "--directory", "D:\\ThanhTrucSolutions\\Ori\\samples\\todo-app\\client\\build\\web"],
       "port": 5161
     }
   ]
