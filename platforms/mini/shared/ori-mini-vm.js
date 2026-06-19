@@ -366,6 +366,13 @@
         if (count < 0) count = 0;
         return str(s.substr(start, count));
       }],
+      ["str_join", function(args) {
+        if (!args[0] || args[0].t !== V_ARR) return str("");
+        var a = args[0].v, sep = (args[1] && args[1].t === V_STR) ? args[1].v : "";
+        var parts = [];
+        for (var i = 0; i < a.length; i++) parts.push(a[i].t === V_STR ? a[i].v : "");
+        return str(parts.join(sep));
+      }],
       ["type", function(args) {
         var v = args[0] || nil();
         return str(v.t === V_NIL ? "nil" : v.t === V_NUM ? "number" : v.t === V_BOOL ? "bool" : v.t === V_STR ? "string" : v.t === V_ARR ? "array" : "function");
