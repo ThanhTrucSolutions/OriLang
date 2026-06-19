@@ -86,11 +86,19 @@ enum {
     OP_PUSHINT=31  // arg = an integer literal pushed directly (used by the Ori-written compiler)
 };
 
-static void die(const char* msg){ fprintf(stderr, "%s\n", msg); exit(3); }
+#if defined(_MSC_VER)
+#define ORI_NORETURN __declspec(noreturn)
+#elif defined(__GNUC__) || defined(__clang__)
+#define ORI_NORETURN __attribute__((noreturn))
+#else
+#define ORI_NORETURN
+#endif
+
+static ORI_NORETURN void die(const char* msg){ fprintf(stderr, "%s\n", msg); exit(3); }
 static void* xmalloc(size_t n){ void* p=malloc(n); if(!p) die("out of memory"); return p; }
 static void* xrealloc(void* p, size_t n){ void* q=realloc(p,n); if(!q) die("out of memory"); return q; }
 static char* dupstr(const char* s){ size_t n=strlen(s)+1; char* d=xmalloc(n); memcpy(d,s,n); return d; }
-static void rt_error(const char* msg); /* fwd — defined after VM struct */
+static ORI_NORETURN void rt_error(const char* msg); /* fwd — defined after VM struct */
 
 // ---------------------------------------------------------------------------
 //  Values
@@ -461,7 +469,7 @@ static Value pop(VM* vm){ if(vm->sp<=0) rt_error("stack underflow"); return vm->
 static jmp_buf* g_err_jmp = NULL;
 static char g_err_msg[256];
 
-static void rt_error(const char* msg){
+static ORI_NORETURN void rt_error(const char* msg){
     fprintf(stderr,"[Ori runtime error] %s\n",msg);
     if(g_err_jmp){ snprintf(g_err_msg,sizeof g_err_msg,"%s",msg); longjmp(*g_err_jmp,1); }
     exit(4);
@@ -469,7 +477,7 @@ static void rt_error(const char* msg){
 
 static int safe_int(double d){
     if(d>=2147483647.0) return 2147483647;
-    if(d<=-2147483648.0) return -2147483648;
+    if(d<=-2147483648.0) return -2147483647 - 1;
     return (int)d;
 }
 static int check_index(Value idx, int count){
