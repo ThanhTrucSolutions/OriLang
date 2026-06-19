@@ -509,7 +509,7 @@ static void do_call(VM* vm, int argc){
 
 static void check_finite(double r){ if(isnan(r)||isinf(r)) rt_error("arithmetic result is NaN or Inf"); }
 static Value bin_add(Value a, Value b){
-    if(a.t==V_STR||b.t==V_STR){ Sb s; sb_init(&s); val_display(&s,a); val_display(&s,b); return vstr_n(s.d,s.len); }
+    if(a.t==V_STR||b.t==V_STR){ Sb s; sb_init(&s); val_display(&s,a); val_display(&s,b); Value v=vstr_n(s.d,s.len); free(s.d); return v; }
     if(a.t==V_NUM&&b.t==V_NUM){ double r=a.u.num+b.u.num; check_finite(r); return vnum(r); }
     rt_error("cannot add these types"); return vnil();
 }
