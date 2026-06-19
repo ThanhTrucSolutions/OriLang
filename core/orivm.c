@@ -702,7 +702,7 @@ static Value h_write_file(VM* vm, Value* a, int argc){
     fwrite(s->d,1,s->len,f); fclose(f); return vnum(s->len);
 }
 static Value h_argc(VM* vm, Value* a, int argc){ return vnum(vm->pargc); }
-static Value h_argv(VM* vm, Value* a, int argc){ int i=(int)argnum(a,argc,0); if(i<0||i>=vm->pargc) return vstr(""); return vstr(vm->pargv[i]); }
+static Value h_argv(VM* vm, Value* a, int argc){ int i=safe_int(argnum(a,argc,0)); if(i<0||i>=vm->pargc) return vstr(""); return vstr(vm->pargv[i]); }
 
 // ---- OS / build host functions (so the toolchain can be written in Ori) ----
 static Value h_env(VM* vm, Value* a, int argc){ if(argc<1||a[0].t!=V_STR) return vstr(""); char* e=getenv(a[0].u.s->d); return vstr(e?e:""); }
