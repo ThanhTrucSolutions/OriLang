@@ -1,0 +1,14 @@
+// console/ori/main.ori
+// Run: ori run console (or ori dev for hot reload)
+
+fold fib n {
+    when n < 2 { give n }
+    give fib (n - 1) + fib (n - 2)
+}
+
+hold i = 0
+loop i < 10 {
+    say ("fib(" + str i + ") = " + str (fib i))
+    i = i + 1
+}
+say ("Hello from Ori CLI!")
