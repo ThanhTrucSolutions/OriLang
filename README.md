@@ -36,6 +36,19 @@ A project is just an `ori/` folder and a `<name>.meta` file.
 
 ---
 
+
+## Screenshots
+
+Real captures from running the product demo (Ori).
+
+![Project structure](docs/screenshots/demo-tree.png)
+
+*Project structure*
+
+![CLI help](docs/screenshots/demo-cli.png)
+
+*CLI help*
+
 ## 1. The language is parenthesis-free
 
 Function calls and definitions use **juxtaposition** — no parentheses:
