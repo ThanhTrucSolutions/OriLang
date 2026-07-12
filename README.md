@@ -262,7 +262,8 @@ The host calls `render()` to get the spec and `dispatch(ev, arg)` on events. App
 
 ## Diagrams
 
-System architecture and workflow — full width. Open the HTML files for **dark/light theme** and export (PNG/SVG).
+System architecture and workflow — full width. Open the HTML files for **dark/light theme** and export (PNG/SVG). 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for Mermaid flow diagrams.
 
 ### Architecture
 
