@@ -1,0 +1,14 @@
+// Minimal stdlib regression: arithmetic, strings, arrays (run via orivm after compile)
+hold a = 2 + 3
+hold b = "ori" + "-lang"
+hold xs = [1, 2, 3]
+push (xs, 4)
+hold n = len xs
+when a == 5 {
+    when n == 4 {
+        say ("stdlib_ok " + b)
+        give 0
+    }
+}
+say "stdlib_fail"
+give 1
