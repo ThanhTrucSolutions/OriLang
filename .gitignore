@@ -37,3 +37,6 @@ androidapp.png
 # (tools/web/orivm.js and orivm.wasm are kept by default - not ignored)
 androidapp_s.png
 winfull.png
+
+data/todos/
+
