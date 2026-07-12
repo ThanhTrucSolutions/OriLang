@@ -198,7 +198,7 @@ fold compile_orb proj m_entry proj_name {
 
 // ===== DOCTOR =====
 fold cmd_doctor {
-    say("ori doctor")
+    say("ori doctor  (toolchain 0.9.0)")
     when exists(VM_EXE) { say("  [ok] native VM      " + VM_EXE) }
     else {
         say("  [!!] native VM missing: " + VM_EXE)
@@ -213,7 +213,10 @@ fold cmd_doctor {
     hold wasm = jp(TOOLS_WEB, "orivm.wasm")
     when exists(wasm) { say("  [ok] web runtime    tools/web/orivm.wasm") }
     else { say("  [..] web runtime    not built (only for `ori run` on web platform)") }
-    say("  Toolchain ready.")
+    hold stdlib = jp(jp(HOME, "core"), "test_stdlib_basics.ori")
+    when exists(stdlib) { say("  [ok] stdlib fixture core/test_stdlib_basics.ori") }
+    else { say("  [..] stdlib fixture not present") }
+    say("  Toolchain ready.  Try: ori version")
     give 0
 }
 
@@ -923,7 +926,9 @@ when argc() > 1 { ORI_ARG  = argv(1) }
 when argc() > 2 { ORI_ARG2 = argv(2) }
 
 when ORI_CMD == "version" {
-    say("Ori toolchain 0.8  (C VM + Ori-written CLI)")
+    say("Ori toolchain 0.9.0  (C VM + Ori-written CLI)")
+    say("runtime: native C orivm · compiler: tools/oric.orb (self-hosted)")
+    say("platforms: windows linux macos web android ios mini-apps chrome-extension")
 } else when ORI_CMD == "doctor" {
     cmd_doctor()
 } else when ORI_CMD == "create" {
