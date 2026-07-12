@@ -17,6 +17,7 @@
 
 ## Table of contents
 
+- [Diagrams](#diagrams)
 - [Highlights](#highlights)
 - [Screenshots](#screenshots)
 - [Pipeline](#pipeline)
@@ -49,6 +50,21 @@ A project is an `ori/` folder plus a `<name>.meta` file.
 | *Repository structure capture* | *CLI help capture* |
 
 ---
+
+
+
+
+## Diagrams
+
+Interactive Archify diagrams (dark/light theme, export PNG/SVG in the HTML viewer):
+
+| Diagram | Interactive | README embed |
+| --- | --- | --- |
+| **Architecture** | [docs/diagrams/architecture.html](docs/diagrams/architecture.html) | ![Architecture](docs/diagrams/architecture.svg) |
+| **Workflow** | [docs/diagrams/workflow.html](docs/diagrams/workflow.html) | ![Workflow](docs/diagrams/workflow.svg) |
+
+*Generated with [archify](https://github.com/tt-a1i) — open the `.html` files for theme toggle and export.*
+
 
 ## Pipeline
 
