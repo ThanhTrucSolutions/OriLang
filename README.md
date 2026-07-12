@@ -182,7 +182,8 @@ sh build.sh
 | Windows (console) | `windows` | [samples/console](samples/console) | `ori run samples/console` |
 | Windows (GUI) | `windows` + `ui: window` | [samples/desktop-win](samples/desktop-win) | `ori run samples/desktop-win` |
 | Linux (console) | `linux` | [samples/linux](samples/linux) | `ori build samples/linux` |
-| macOS (console) | `macos` | [samples/desktop-macos](samples/desktop-macos) | `ori build samples/desktop-macos` (on macOS) |
+| macOS (console) | `macos` | [samples/macos](samples/macos) | `ori build samples/macos` (on macOS) |
+| macOS (GUI) | `macos` + `ui: window` | [samples/desktop-macos](samples/desktop-macos) | `ori build samples/desktop-macos` (on macOS) |
 | Web (WASM) | `web` | [samples/web](samples/web) | `ori run samples/web` |
 | Web (Todo) | `web` | [samples/todo-web](samples/todo-web) | `ori run samples/todo-web` |
 | Android | `android` | [samples/mobile-android](samples/mobile-android) | `ori build samples/mobile-android` |
