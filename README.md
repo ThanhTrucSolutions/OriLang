@@ -1,10 +1,56 @@
-# Ori — a programming language with its own native VM
+# OriLang (Ori)
 
-**Ori** is a small, parenthesis-free programming language with its own **virtual
-machine written in C**, a **compiler written in Ori itself** (self-hosting), and a
-**CLI written in Ori** that runs on the VM. No .NET, no other runtime — just C and Ori.
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![C VM](https://img.shields.io/badge/runtime-native%20C%20VM-00599C.svg)](core/orivm.c)
+[![Self-hosting](https://img.shields.io/badge/compiler-self--hosting%20Ori-5319E7.svg)](tools/oric.ori)
+[![MergeOS](https://img.shields.io/badge/MergeOS-bounties-5319E7.svg)](https://github.com/mergeos-bounties)
 
-**MergeOS bounties:** star this repo + [mergeos](https://github.com/mergeos-bounties/mergeos), claim open `bounty` issues, then PR to `main`. See [docs/BOUNTY.md](docs/BOUNTY.md).
+**Ori** is a small, **parenthesis-free** programming language with its own **virtual machine written in C**, a **compiler written in Ori** (self-hosting), and a **CLI written in Ori** that runs on the VM. No .NET, no JVM — just C and Ori.
+
+| Repo | Default branch |
+| --- | --- |
+| [ThanhTrucSolutions/OriLang](https://github.com/ThanhTrucSolutions/OriLang) | `main` |
+
+**MergeOS bounties:** star this repo + [mergeos](https://github.com/mergeos-bounties/mergeos), claim open `bounty` issues, PR to **`main`**. Policy: [docs/BOUNTY.md](docs/BOUNTY.md).
+
+---
+
+## Table of contents
+
+- [Highlights](#highlights)
+- [Screenshots](#screenshots)
+- [Pipeline](#pipeline)
+- [Language overview](#1-the-language-is-parenthesis-free)
+- [Build & run](#build--run) *(see sections below)*
+- [MergeOS bounties](#mergeos-bounties)
+- [License](#license)
+
+---
+
+## Highlights
+
+| Layer | Implementation |
+| --- | --- |
+| **Core VM** | [core/orivm.c](core/orivm.c) — stack bytecode, arrays, recursion, host built-ins (`http_get`, …), SHA-256/HMAC, ChaCha20 |
+| **Compiler** | [tools/oric.ori](tools/oric.ori) — self-hosting; ships as `tools/oric.orb` (byte-exact fixpoint) |
+| **CLI** | [tools/ori.ori](tools/ori.ori) → `ori.orb`; thin C bootstrap [tools/ori.c](tools/ori.c) |
+| **Targets** | Windows, Linux, macOS, **WASM**, Android APK, iOS Simulator, mini-apps, Chrome extension |
+| **Release** | `ori build <p> release` → encrypted `.orx` + per-build opcode permutation |
+
+A project is an `ori/` folder plus a `<name>.meta` file.
+
+---
+
+## Screenshots
+
+| Project tree | CLI |
+| :---: | :---: |
+| ![Tree](docs/screenshots/demo-tree.png) | ![CLI](docs/screenshots/demo-cli.png) |
+| *Repository structure capture* | *CLI help capture* |
+
+---
+
+## Pipeline
 
 ```
    .ori  ──►  oric (compiler, written in Ori)  ──►  .orb  ──►  orivm (C VM)  ──►  runs
@@ -16,38 +62,7 @@ machine written in C**, a **compiler written in Ori itself** (self-hosting), and
    tools/ori.c    ──►  ori.exe         (thin C bootstrap — just runs orivm tools/ori.orb)
 ```
 
-- **Core = C.** [core/orivm.c](core/orivm.c) — a stack-based bytecode VM with
-  values, arrays, recursion, host built-ins (including `http_get`), SHA-256/HMAC
-  + ChaCha20.
-- **Compiler = Ori.** [tools/oric.ori](tools/oric.ori) — tokenizer + parser +
-  bytecode emitter written in Ori. Compiles *itself* (byte-exact fixpoint) and
-  ships as `tools/oric.orb`.
-- **CLI = Ori.** [tools/ori.ori](tools/ori.ori) → `tools/ori.orb`. The CLI itself
-  is written in Ori and runs on the C VM. `tools/ori.c` is just a thin 70-line
-  C bootstrap that finds the VM and hands off to `ori.orb`.
-- **One VM, every platform.** Native **Windows**, **Linux**, **macOS**, the
-  **browser** (WebAssembly), **Android** (APK), **iOS Simulator**, mini-app
-  source packages (WeChat, Alipay, Zalo, Telegram, LINE, Grab, MoMo), and a
-  Chrome extension target.
-- **Hardened release images.** `ori build <p> release` → encrypted `.orx` with
-  **per-build random opcode permutation** (ChaCha20 + HMAC + operand whitening).
-
-A project is just an `ori/` folder and a `<name>.meta` file.
-
 ---
-
-
-## Screenshots
-
-Real captures from running the product demo (Ori).
-
-![Project structure](docs/screenshots/demo-tree.png)
-
-*Project structure*
-
-![CLI help](docs/screenshots/demo-cli.png)
-
-*CLI help*
 
 ## 1. The language is parenthesis-free
 
