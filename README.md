@@ -246,6 +246,8 @@ The host calls `render()` to get the spec and `dispatch(ev, arg)` on events. App
 
 ## Language summary
 
+See [docs/CHEATSHEET.md](docs/CHEATSHEET.md) for a comprehensive language cheatsheet!
+
 | Feature | Syntax |
 | --- | --- |
 | Variable | `hold x = 42` |
