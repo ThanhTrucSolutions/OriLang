@@ -303,6 +303,18 @@ Star this repo + [mergeos](https://github.com/mergeos-bounties/mergeos), claim o
 
 ---
 
+## Tiếng Việt
+
+**Ori** là ngôn ngữ lập trình không bắt buộc ngoặc, VM C, compiler self-hosting. Bootstrap: `build.cmd` / `build.sh` → `ori run samples/console`.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build prerequisites (Windows MSVC / Linux / macOS), first steps (`ori create` / `ori run`), and MergeOS bounty workflow.
+
+---
+
 ## License
 
 MIT · MergeOS / ThanhTrucSolutions
