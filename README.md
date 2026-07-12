@@ -303,6 +303,30 @@ Star this repo + [mergeos](https://github.com/mergeos-bounties/mergeos), claim o
 
 **Ori** là ngôn ngữ lập trình không bắt buộc ngoặc, VM C, compiler self-hosting. Bootstrap: `build.cmd` / `build.sh` → `ori run samples/console`.
 
+### Bắt đầu nhanh
+
+Cài đặt bước đầu (cần Visual Studio C++ tools / MSVC trên Windows):
+
+```bat
+build.cmd
+```
+
+Trên Linux/macOS:
+
+```sh
+sh build.sh
+```
+
+Sau đó:
+
+```bat
+ori create myapp           :: tạo dự án mới
+ori run    myapp           :: biên dịch + chạy trên native C VM
+ori dev    myapp           :: hot reload: tự động chạy lại khi sửa code
+ori build  myapp release   :: đóng gói sản phẩm (mã hóa .orx)
+ori doctor                 :: kiểm tra bộ công cụ
+```
+
 ---
 
 ## License
