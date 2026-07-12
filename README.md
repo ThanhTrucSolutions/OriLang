@@ -4,6 +4,8 @@
 machine written in C**, a **compiler written in Ori itself** (self-hosting), and a
 **CLI written in Ori** that runs on the VM. No .NET, no other runtime — just C and Ori.
 
+**MergeOS bounties:** star this repo + [mergeos](https://github.com/mergeos-bounties/mergeos), claim open `bounty` issues, then PR to `main`. See [docs/BOUNTY.md](docs/BOUNTY.md).
+
 ```
    .ori  ──►  oric (compiler, written in Ori)  ──►  .orb  ──►  orivm (C VM)  ──►  runs
    source        runs on the C VM                    bytecode
