@@ -27,6 +27,7 @@
 - [Diagrams](#diagrams)
 - [Limitations](#limitations)
 - [MergeOS bounties](#mergeos-bounties)
+- [Contributing](CONTRIBUTING.md)
 - [License](#license)
 
 ---
@@ -302,6 +303,12 @@ Star this repo + [mergeos](https://github.com/mergeos-bounties/mergeos), claim o
 ## Tiếng Việt
 
 **Ori** là ngôn ngữ lập trình không bắt buộc ngoặc, VM C, compiler self-hosting. Bootstrap: `build.cmd` / `build.sh` → `ori run samples/console`.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build the toolchain and submit PRs.
 
 ---
 
