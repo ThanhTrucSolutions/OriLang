@@ -1,66 +1,67 @@
-# OriLang (Ori)
+# OriLang
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![C VM](https://img.shields.io/badge/runtime-native%20C%20VM-00599C.svg)](core/orivm.c)
 [![Self-hosting](https://img.shields.io/badge/compiler-self--hosting%20Ori-5319E7.svg)](tools/oric.ori)
 [![MergeOS](https://img.shields.io/badge/MergeOS-bounties-5319E7.svg)](https://github.com/mergeos-bounties)
 
-**Ori** is a small, **parenthesis-free** programming language with its own **virtual machine written in C**, a **compiler written in Ori** (self-hosting), and a **CLI written in Ori** that runs on the VM. No .NET, no JVM — just C and Ori.
+**Ori** es un lenguaje de programación pequeño y sin paréntesis obligatorios, con una **máquina virtual escrita en C**, un **compilador escrito en Ori** (autosuficiente) y una **CLI escrita en Ori** que se ejecuta sobre la VM. No depende de .NET, JVM ni otras plataformas externas — solo C y Ori.
 
-| Repo | Default branch |
+| Repositorio | Rama por defecto |
 | --- | --- |
 | [ThanhTrucSolutions/OriLang](https://github.com/ThanhTrucSolutions/OriLang) | `main` |
 
 ---
 
-## Table of contents
+## 📋 Contenidos
 
-- [Highlights](#highlights)
-- [Screenshots](#screenshots)
-- [Pipeline](#pipeline)
-- [Language overview](#language-overview)
-- [Quick start](#quick-start)
-- [Platforms & sample apps](#platforms--sample-apps)
-- [Self-hosting & hardening](#self-hosting--hardening)
-- [Project layout](#project-layout)
-- [Language summary](#language-summary)
-- [Diagrams](#diagrams)
-- [Limitations](#limitations)
-- [MergeOS bounties](#mergeos-bounties)
-- [License](#license)
+- [Características destacadas](#características-destacadas)
+- [Capturas de pantalla](#capturas-de-pantalla)
+- [Flujo de trabajo](#flujo-de-trabajo)
+- [Visión general del lenguaje](#visión-general-del-lenguaje)
+- [Guía de inicio rápido](#guía-de-inicio-rápido)
+- [Plataformas y ejemplos](#plataformas-y-ejemplos)
+- [Autosuficiencia y seguridad](#autosuficiencia-y-seguridad)
+- [Estructura del proyecto](#estructura-del-proyecto)
+- [Resumen del lenguaje](#resumen-del-lenguaje)
+- [Diagramas](#diagramas)
+- [Limitaciones](#limitaciones)
+- [Bounties de MergeOS](#bounties-de-mergeos)
+- [Licencia](#licencia)
 
 ---
 
-## Highlights
+## ✨ Características destacadas
 
-| Layer | Implementation |
+| Capa | Implementación |
 | --- | --- |
-| **Core VM** | [core/orivm.c](core/orivm.c) — stack bytecode, arrays, recursion, host built-ins (`http_get`, …), SHA-256/HMAC, ChaCha20 |
-| **Compiler** | [tools/oric.ori](tools/oric.ori) — self-hosting; ships as `tools/oric.orb` (byte-exact fixpoint) |
-| **CLI** | [tools/ori.ori](tools/ori.ori) → `ori.orb`; thin C bootstrap [tools/ori.c](tools/ori.c) |
-| **Targets** | Windows, Linux, macOS, **WASM**, Android APK, iOS Simulator, mini-apps, Chrome extension |
-| **Release** | `ori build <p> release` → encrypted `.orx` + per-build opcode permutation |
+| **VM núcleo** | [core/orivm.c](core/orivm.c) — bytecode en pila, arrays, recursión, funciones nativas (`http_get`, …), SHA-256/HMAC, ChaCha20 |
+| **Compilador** | [tools/oric.ori](tools/oric.ori) — autosuficiente; se distribuye como `tools/oric.orb` (punto fijo byte-exacto) |
+| **CLI** | [tools/ori.ori](tools/ori.ori) → `ori.orb`; arranque en C con [tools/ori.c](tools/ori.c) |
+| **Plataformas** | Windows, Linux, macOS, **WASM**, Android APK, iOS Simulator, mini-apps, extensión de Chrome |
+| **Compilación segura** | `ori build <p> release` → archivo `.orx` encriptado + permutación de opcodes por compilación |
 
-A project is an `ori/` folder plus a `<name>.meta` file.
+Un proyecto es una carpeta `ori/` más un archivo `<nombre>.meta`.
 
 ---
 
-## Screenshots
+## 🖼️ Capturas de pantalla
 
-| Project tree | CLI |
+| Árbol de proyecto | CLI |
 | :---: | :---: |
-| ![Tree](docs/screenshots/demo-tree.png) | ![CLI](docs/screenshots/demo-cli.png) |
-| *Repository structure capture* | *CLI help capture* |
+| ![Árbol](docs/screenshots/demo-tree.png) | ![CLI](docs/screenshots/demo-cli.png) |
+| *Captura de la estructura del repositorio* | *Captura de la ayuda de la CLI* |
 
 ---
 
-## Pipeline
+## 🔄 Flujo de trabajo
 
 ```text
-   .ori  ──►  oric (compiler, written in Ori)  ──►  .orb  ──►  orivm (C VM)  ──►  runs
-   source        runs on the C VM                    bytecode
-                                            ori build <p> release ──►  .orx (encrypted)
+   .ori  ──►  oric (compilador, escrito en Ori)  ──►  .orb  ──►  orivm (VM en C)  ──►  ejecución
+   fuente        se ejecuta sobre la VM C             bytecode
+                                            ori build <p> release ──►  .orx (encriptado)
 
+<<<<<<< HEAD
    ori CLI is also written in Ori:
    tools/ori.ori  ──►  tools/ori.orb  (compiled by oric)
    tools/ori.c    ──►  ori.exe         (thin C bootstrap — just runs orivm tools/ori.orb)
@@ -318,3 +319,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build prerequisites (Windows MSVC / L
 ## License
 
 MIT · MergeOS / ThanhTrucSolutions
+=======
+   La CLI de Ori también está escrita en Ori:
+   tools/ori.ori  ──►  tools/ori.orb  (compilado por oric)
+   tools/ori.c    ──►  ori.exe        (arranque en C — ejecuta orivm tools/ori.orb)
+>>>>>>> 7b874cb (docs: improve README with better structure and clarity #14)
