@@ -279,7 +279,7 @@ fold tpl_console host {
 "say (\"Hello from Ori on " + host + "!\")\n"
 }
 
-fold cmd_create proj_name platform {
+fold cmd_create proj_name platform ui_flag {
     hold ori_dir  = jp(proj_name, "ori")
     hold main_ori = jp(ori_dir, "main.ori")
     ensure_dir(ori_dir)
@@ -289,6 +289,8 @@ fold cmd_create proj_name platform {
     hold meta_ui = ""
     when platform == "desktop-win"  { meta_platform = "windows"  meta_ui = "window" }
     when platform == "desktop-macos" { meta_platform = "macos"   meta_ui = "window" }
+    when ui_flag == "--window" { meta_ui = "window" }
+    when ui_flag == "--console" { meta_ui = "" }
 
     when is_mini(platform) {
         write_text(main_ori,
@@ -921,9 +923,11 @@ fold usage {
 hold ORI_CMD  = ""
 hold ORI_ARG  = "."
 hold ORI_ARG2 = ""
+hold ORI_ARG3 = ""
 when argc() > 0 { ORI_CMD  = argv(0) }
 when argc() > 1 { ORI_ARG  = argv(1) }
 when argc() > 2 { ORI_ARG2 = argv(2) }
+when argc() > 3 { ORI_ARG3 = argv(3) }
 
 when ORI_CMD == "version" {
     say("Ori toolchain 0.9.0  (C VM + Ori-written CLI)")
@@ -933,11 +937,19 @@ when ORI_CMD == "version" {
     cmd_doctor()
 } else when ORI_CMD == "create" {
     when ORI_ARG == "." {
-        say("usage: ori create <name> [platform]")
+        say("usage: ori create <name> [platform] [--window|--console]")
     } else {
         hold plat = "windows"
-        when ORI_ARG2 != "" { plat = ORI_ARG2 }
-        cmd_create(ORI_ARG, plat)
+        hold ui_flag = ""
+        when ORI_ARG2 == "--window" || ORI_ARG2 == "--console" {
+            ui_flag = ORI_ARG2
+        } else when ORI_ARG2 != "" {
+            plat = ORI_ARG2
+        }
+        when ORI_ARG3 == "--window" || ORI_ARG3 == "--console" {
+            ui_flag = ORI_ARG3
+        }
+        cmd_create(ORI_ARG, plat, ui_flag)
     }
 } else when ORI_CMD == "export" {
     hold proj = abspath(to_native_sep(ORI_ARG))
