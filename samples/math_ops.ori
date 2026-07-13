@@ -1,0 +1,11 @@
+// Basic math + when sample for OriLang upgrade cycle
+hold a = 1
+hold b = 2
+hold c = 3
+hold n = a + b * c
+say ("1 + 2 * 3 = " + n)
+
+hold x = 10
+when x > 5 {
+  say "x is big"
+}

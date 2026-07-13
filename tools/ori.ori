@@ -198,7 +198,7 @@ fold compile_orb proj m_entry proj_name {
 
 // ===== DOCTOR =====
 fold cmd_doctor {
-    say("ori doctor  (toolchain 0.9.0)")
+    say("ori doctor  (toolchain 0.9.1)")
     when exists(VM_EXE) { say("  [ok] native VM      " + VM_EXE) }
     else {
         say("  [!!] native VM missing: " + VM_EXE)
@@ -926,7 +926,7 @@ when argc() > 1 { ORI_ARG  = argv(1) }
 when argc() > 2 { ORI_ARG2 = argv(2) }
 
 when ORI_CMD == "version" {
-    say("Ori toolchain 0.9.0  (C VM + Ori-written CLI)")
+    say("Ori toolchain 0.9.1  (C VM + Ori-written CLI)")
     say("runtime: native C orivm · compiler: tools/oric.orb (self-hosted)")
     say("platforms: windows linux macos web android ios mini-apps chrome-extension")
 } else when ORI_CMD == "doctor" {
