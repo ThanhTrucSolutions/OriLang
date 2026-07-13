@@ -147,10 +147,12 @@ Fixes #<issue_number>
 OriLang uses [MergeOS bounties](https://github.com/mergeos-bounties). See [docs/BOUNTY.md](docs/BOUNTY.md) for the full policy.
 
 Quick summary:
-1. Star [OriLang](https://github.com/ThanhTrucSolutions/OriLang) and [mergeos](https://github.com/mergeos-bounties/mergeos).
-2. Comment `I claim this bounty` on the issue.
-3. Claim on [MergeOS issue #1](https://github.com/mergeos-bounties/mergeos/issues/1) with the issue URL.
-4. PR to `main` with `Fixes #<n>`.
+1. **Follow** [mergeos-bounties](https://github.com/mergeos-bounties)
+2. **Star** [mergeos](https://github.com/mergeos-bounties/mergeos)
+3. **Star** [mergeos-contracts](https://github.com/mergeos-bounties/mergeos-contracts)
+4. Comment `I claim this bounty` on the issue.
+5. Claim on [MergeOS issue #1](https://github.com/mergeos-bounties/mergeos/issues/1) with the issue URL.
+6. PR to `main` with `Fixes #<n>`.
 
 Payouts are labeled `reward:25-mrg` / `50` / `100` / `200` and are paid after merge.
 
