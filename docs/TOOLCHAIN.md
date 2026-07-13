@@ -153,3 +153,14 @@ ADD SUB MUL DIV MOD NEG  EQ NEQ LT GT LE GE NOT
 JMP JMPIFFALSE JMPIFTRUE CALL RET
 MAKEARRAY INDEX STOREINDEX  PUSHINT
 ```
+
+
+## CMake (optional)
+
+```bash
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+Primary Windows flow remains `build.cmd` / `build.ps1`. CMake targets `orivm` for IDEs and CI that prefer a standard C build.
