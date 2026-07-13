@@ -1,0 +1,8 @@
+﻿// Sum with fold-style loop sample
+hold total = 0
+hold i = 1
+loop i <= 5 {
+  hold total = total + i
+  hold i = i + 1
+}
+say ("sum " + total)

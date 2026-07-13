@@ -50,3 +50,5 @@ Related fixtures:
 - `docs/examples/fib.md` — recursion
 - `docs/examples/array.md` — arrays / push
 - `docs/examples/hello.md` — first say
+
+Also see `samples/fold_sum.ori` for a looped sum smoke sample.
