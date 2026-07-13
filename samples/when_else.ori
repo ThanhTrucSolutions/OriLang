@@ -1,0 +1,9 @@
+// when / else when / else sample
+hold n = 7
+when n > 10 {
+  say "big"
+} else when n > 5 {
+  say "medium"
+} else {
+  say "small"
+}
