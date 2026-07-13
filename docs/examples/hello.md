@@ -15,3 +15,5 @@ ori run helloapp
 See also [fib.md](fib.md) and `ori doctor`.
 
 Also see `samples/hello_mrgminner.ori` for a one-liner smoke sample.
+
+Also see `samples/hello_upgrade.ori` for a multi-line upgrade-cycle smoke sample.

@@ -1,0 +1,4 @@
+﻿// Minimal Ori sample — upgrade cycle smoke
+say "Hello from Ori upgrade cycle"
+hold n = 3
+say ("ticks " + n)
