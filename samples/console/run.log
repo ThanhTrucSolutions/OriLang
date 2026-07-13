@@ -1,0 +1,14 @@
+oric.ori: compiled /home/debian/OriLang/samples/console/ori/main.ori -> /home/debian/OriLang/samples/console/build/app.orb (413 bytes .orb, 2 functions)
+ori: running on the native C VM
+----------------------------------------
+fib(0) = 0
+fib(1) = 1
+fib(2) = 1
+fib(3) = 2
+fib(4) = 3
+fib(5) = 5
+fib(6) = 8
+fib(7) = 13
+fib(8) = 21
+fib(9) = 34
+Hello from Ori on Windows!
