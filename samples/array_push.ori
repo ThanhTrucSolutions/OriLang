@@ -1,0 +1,5 @@
+// Array push/index sample
+hold xs = [1, 2, 3]
+push(xs, 4)
+say ("len " + len xs)
+say ("last " + xs[3])

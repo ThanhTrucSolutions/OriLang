@@ -1,0 +1,7 @@
+// Countdown loop
+hold n = 5
+loop n > 0 {
+  say n
+  hold n = n - 1
+}
+say "blast off"
