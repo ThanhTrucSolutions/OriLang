@@ -1,0 +1,12 @@
+﻿// Nested loops sample
+hold total = 0
+hold i = 1
+loop i <= 3 {
+  hold j = 1
+  loop j <= 2 {
+    hold total = total + 1
+    hold j = j + 1
+  }
+  hold i = i + 1
+}
+say ("nested ticks " + total)

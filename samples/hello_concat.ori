@@ -1,0 +1,4 @@
+﻿// String concat sample
+hold name = "Ori"
+hold msg = "hello " + name
+say msg
