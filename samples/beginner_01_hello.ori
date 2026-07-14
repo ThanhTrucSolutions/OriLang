@@ -1,0 +1,5 @@
+# Tutorial 1: Hello World
+# This is the simplest OriLang program
+
+hold greeting = "Hello, World!"
+print(greeting)
