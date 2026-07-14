@@ -1,0 +1,10 @@
+// Beginner 09 — chained math (runs on C VM)
+hold a = 4
+hold b = 5
+hold sum = a + b
+hold prod = a * b
+say ("4+5=" + sum)
+say ("4*5=" + prod)
+when prod > 10 {
+  say "product is over ten"
+}
