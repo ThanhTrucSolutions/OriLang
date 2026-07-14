@@ -1,0 +1,9 @@
+// print numbers 1..5 with a simple loop
+hold n = 1
+loop {
+  when n > 5 {
+    break
+  }
+  say ("n=" + n)
+  hold n = n + 1
+}
