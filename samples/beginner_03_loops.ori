@@ -1,0 +1,11 @@
+# Tutorial 3: Loops
+# Repeat actions with hold/when/loop
+
+loop i in range(5)
+    print("Iteration: " + string(i))
+end
+
+hold fruits = ["apple", "banana", "cherry"]
+loop fruit in fruits
+    print("Fruit: " + fruit)
+end
