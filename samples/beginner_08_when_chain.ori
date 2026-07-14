@@ -1,0 +1,11 @@
+// Beginner 08 — when chain (runs on C VM)
+hold n = 7
+when n > 10 {
+  say "big"
+}
+when n < 10 {
+  say "small"
+}
+when n == 7 {
+  say "lucky seven"
+}
