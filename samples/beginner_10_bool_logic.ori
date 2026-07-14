@@ -1,0 +1,11 @@
+// Beginner 10 — bool-ish comparisons (runs on C VM)
+hold n = 7
+hold m = 3
+hold sum = n + m
+say ("7+3=" + sum)
+when sum > 9 {
+  say "sum is at least ten"
+}
+when n > m {
+  say "n is greater than m"
+}
