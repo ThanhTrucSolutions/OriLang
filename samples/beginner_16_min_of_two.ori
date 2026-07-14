@@ -1,0 +1,14 @@
+// Beginner 16 — min of two numbers (runs on C VM)
+hold a = 3
+hold b = 8
+say ("a=" + a)
+say ("b=" + b)
+when a < b {
+  say ("min is " + a)
+}
+when b < a {
+  say ("min is " + b)
+}
+when a > 0 {
+  say "a is positive"
+}
