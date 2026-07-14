@@ -1,0 +1,9 @@
+# Tutorial 2: Variables
+# Learn how to store and use values
+
+hold name = "OriLang"
+hold version = 1.0
+hold is_fun = true
+
+print("Welcome to " + name)
+print("Version: " + string(version))

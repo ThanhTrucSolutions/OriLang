@@ -1,0 +1,15 @@
+# Tutorial 5: Functions
+# Create reusable code blocks
+
+func add(a, b)
+    return a + b
+end
+
+func greet(name)
+    print("Hello, " + name + "!")
+end
+
+hold result = add(5, 3)
+print("5 + 3 = " + string(result))
+
+greet("OriLang User")
