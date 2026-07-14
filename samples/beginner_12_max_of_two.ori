@@ -1,0 +1,14 @@
+// Beginner 12 — max of two numbers (runs on C VM)
+hold a = 9
+hold b = 4
+say ("a=" + a)
+say ("b=" + b)
+when a > b {
+  say ("max is " + a)
+}
+when b > a {
+  say ("max is " + b)
+}
+when a > 0 {
+  say "a is positive"
+}
