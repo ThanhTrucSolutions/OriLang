@@ -1,0 +1,8 @@
+// Beginner 15 — echo a value twice (runs on C VM)
+hold msg = "hello"
+say msg
+say msg
+hold n = 2
+when n > 1 {
+  say "said it twice"
+}
