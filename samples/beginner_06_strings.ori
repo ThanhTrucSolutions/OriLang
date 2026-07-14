@@ -1,0 +1,9 @@
+// Beginner 06 — string concat + when
+hold name = "Bee"
+hold msg = "Hello, " + name
+say msg
+
+hold n = 3
+when n == 3 {
+  say "three is company"
+}
