@@ -1,0 +1,14 @@
+# Tutorial 4: Conditionals
+# Make decisions with when
+
+hold age = 25
+
+when age < 13
+    print("Child")
+when age < 18
+    print("Teenager")
+when age < 65
+    print("Adult")
+else
+    print("Senior")
+end
