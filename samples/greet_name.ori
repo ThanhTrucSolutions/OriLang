@@ -1,0 +1,3 @@
+// greet with concat
+hold name = "MergeOS"
+say ("hello " + name)
