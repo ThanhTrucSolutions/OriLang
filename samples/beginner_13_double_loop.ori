@@ -1,0 +1,12 @@
+// Beginner 13 — nested counts (runs on C VM)
+hold i = 1
+when i < 4 {
+  say ("outer " + i)
+  hold j = 1
+  when j < 3 {
+    say ("  inner " + j)
+    hold j = j + 1
+  }
+  hold i = i + 1
+}
+say "nested done"
