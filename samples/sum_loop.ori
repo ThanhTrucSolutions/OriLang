@@ -1,0 +1,12 @@
+// sum 1..n with a loop
+hold n = 5
+hold sum = 0
+hold i = 1
+loop {
+  when i > n {
+    break
+  }
+  hold sum = sum + i
+  hold i = i + 1
+}
+say ("sum=" + sum)
