@@ -1,0 +1,10 @@
+// Beginner 07 — math + when (runs on C VM)
+hold a = 2
+hold b = 3
+hold product = a * b
+say ("2 * 3 = " + product)
+
+hold score = 80
+when score >= 50 {
+  say "pass"
+}
