@@ -1,0 +1,11 @@
+// Beginner 14 — sum a small range (runs on C VM)
+hold n = 1
+hold total = 0
+when n < 6 {
+  hold total = total + n
+  hold n = n + 1
+}
+say ("sum 1..5 = " + total)
+when total > 10 {
+  say "sum is over ten"
+}
