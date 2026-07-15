@@ -1,0 +1,12 @@
+// Beginner 25 — string join / say parts (runs on C VM)
+hold first = "Hello"
+hold name = "Ori"
+hold msg = first + ", " + name
+say msg
+hold a = "part"
+hold b = "B"
+hold joined = a + "-" + b
+say joined
+when joined != "" {
+  say "join ok"
+}
