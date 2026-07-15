@@ -1,0 +1,10 @@
+// Beginner 17 — say three lines (runs on C VM)
+hold a = "one"
+hold b = "two"
+hold c = "three"
+say a
+say b
+say c
+when a > "" {
+  say "done counting"
+}
