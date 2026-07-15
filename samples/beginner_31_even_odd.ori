@@ -1,0 +1,17 @@
+// Beginner 31 — even / odd branching (runs on C VM)
+hold n = 7
+say ("n=" + n)
+hold half = n / 2
+hold twice = half + half
+when twice == n {
+  say "even"
+}
+when twice != n {
+  say "odd"
+}
+hold m = 8
+hold h2 = m / 2
+hold t2 = h2 + h2
+when t2 == m {
+  say ("m even=" + m)
+}
