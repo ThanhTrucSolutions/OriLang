@@ -1,0 +1,33 @@
+// Beginner 23 — fizzbuzz-style counts (runs on C VM)
+hold n = 1
+when n < 16 {
+  hold s = ""
+  when n == 3 {
+    hold s = "fizz"
+  }
+  when n == 5 {
+    hold s = "buzz"
+  }
+  when n == 6 {
+    hold s = "fizz"
+  }
+  when n == 9 {
+    hold s = "fizz"
+  }
+  when n == 10 {
+    hold s = "buzz"
+  }
+  when n == 12 {
+    hold s = "fizz"
+  }
+  when n == 15 {
+    hold s = "fizzbuzz"
+  }
+  when s == "" {
+    say n
+  }
+  when s != "" {
+    say s
+  }
+  hold n = n + 1
+}
