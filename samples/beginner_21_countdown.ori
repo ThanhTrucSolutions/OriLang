@@ -1,0 +1,12 @@
+// Beginner 21 — countdown loop (runs on C VM)
+hold n = 5
+say ("countdown from " + n)
+when n > 0 {
+  say n
+  hold n = n - 1
+}
+when n == 0 {
+  say "done"
+}
+hold total = 1 + 2 + 3
+say ("1+2+3=" + total)
