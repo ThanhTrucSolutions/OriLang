@@ -1,0 +1,20 @@
+// Beginner 22 — min/max of three (runs on C VM)
+hold a = 7
+hold b = 3
+hold c = 9
+hold lo = a
+hold hi = a
+when b < lo {
+  hold lo = b
+}
+when c < lo {
+  hold lo = c
+}
+when b > hi {
+  hold hi = b
+}
+when c > hi {
+  hold hi = c
+}
+say ("min=" + lo)
+say ("max=" + hi)
