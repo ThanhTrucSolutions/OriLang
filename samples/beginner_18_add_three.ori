@@ -1,0 +1,10 @@
+// Beginner 18 — add three numbers (runs on C VM)
+hold a = 2
+hold b = 3
+hold c = 4
+hold total = a + b
+hold total = total + c
+say ("2+3+4=" + total)
+when total > 8 {
+  say "total is over eight"
+}
