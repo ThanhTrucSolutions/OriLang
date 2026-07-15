@@ -1,0 +1,13 @@
+// Beginner 19 — zero check (runs on C VM)
+hold n = 0
+say ("n=" + n)
+when n > 0 {
+  say "positive"
+}
+when n < 1 {
+  say "not positive"
+}
+hold m = 1
+when m > 0 {
+  say "m is positive"
+}
