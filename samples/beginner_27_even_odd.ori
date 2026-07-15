@@ -1,0 +1,15 @@
+// Beginner 27 — even/odd check (runs on C VM)
+hold n = 7
+hold twice = n + n
+say ("n=" + n)
+say ("2n=" + twice)
+when n > 5 {
+  say "greater than five"
+}
+when n < 10 {
+  say "less than ten"
+}
+hold a = 4
+hold b = 2
+hold q = a / b
+say ("4/2=" + q)
