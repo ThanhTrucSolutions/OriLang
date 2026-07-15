@@ -1,0 +1,11 @@
+// Beginner 20 — pair sum (runs on C VM)
+hold x = 10
+hold y = 5
+hold s = x + y
+say ("10+5=" + s)
+when s > 12 {
+  say "sum is over twelve"
+}
+when x > y {
+  say "x is larger"
+}
