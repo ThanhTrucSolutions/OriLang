@@ -303,9 +303,65 @@ Star this repo + [mergeos](https://github.com/mergeos-bounties/mergeos), claim o
 
 ---
 
-## Tiếng Việt
+## Tiếng Việt — Bắt đầu nhanh
 
-**Ori** là ngôn ngữ lập trình không bắt buộc ngoặc, VM C, compiler self-hosting. Bootstrap: `build.cmd` / `build.sh` → `ori run samples/console`.
+**Ori** là ngôn ngữ lập trình không bắt buộc ngoặc, có VM viết bằng C và compiler self-hosting. Không cần .NET, không JVM — chỉ C và Ori.
+
+### Cài đặt
+
+```bash
+git clone https://github.com/ThanhTrucSolutions/OriLang.git
+cd OriLang
+# Windows
+build.cmd
+# Linux / macOS
+bash build.sh
+```
+
+### Dự án đầu tiên
+
+```bash
+mkdir myapp && cd myapp
+cat > hello.ori << 'EOF'
+fn main
+  print "Xin chào thế giới!"
+end
+EOF
+cd ..
+ori run myapp
+```
+
+### Cú pháp cơ bản
+
+| Khái niệm | Cú pháp Ori | Giải thích |
+| --- | --- | --- |
+| Hàm | `fn tên_hàm ... end` | Khai báo hàm mới |
+| Biến | `let x = 5` | Gán giá trị |
+| In ra | `print "xin chào"` | In ra console |
+| Điều kiện | `if x > 0 ... end` | Kiểm tra điều kiện |
+| Vòng lặp | `loop n ... end` | Lặp n lần |
+| Mảng | `let a = [1, 2, 3]` | Mảng nguyên thủy |
+
+### Ví dụ: máy tính bỏ túi
+
+```bash
+ori create calc
+# Trong calc/main.ori:
+fn main
+  let a = 7
+  let b = 3
+  print a + b
+  print a * b
+  print a - b
+end
+```
+
+### Tài nguyên
+
+- [Điểm nổi bật](#highlights)
+- [Mẫu demo](#platforms--sample-apps)
+- [Tóm tắt ngôn ngữ](#language-summary)
+- [GitHub](https://github.com/ThanhTrucSolutions/OriLang)
 
 ---
 
