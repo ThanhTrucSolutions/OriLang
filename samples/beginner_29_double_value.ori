@@ -1,0 +1,13 @@
+// Beginner 29 — double a value and compare (runs on C VM)
+hold n = 6
+hold d = n + n
+say ("n=" + n)
+say ("double=" + d)
+when d > 10 {
+  say "double is over ten"
+}
+hold half = d / 2
+say ("half=" + half)
+when half == n {
+  say "half matches n"
+}
