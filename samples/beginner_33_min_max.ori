@@ -1,0 +1,21 @@
+// Beginner 33 — min / max of two numbers (runs on C VM)
+hold a = 4
+hold b = 9
+say ("a=" + a)
+say ("b=" + b)
+when a < b {
+  say ("min=" + a)
+  say ("max=" + b)
+}
+when a > b {
+  say ("min=" + b)
+  say ("max=" + a)
+}
+when a == b {
+  say "equal"
+}
+hold x = 12
+hold y = 3
+when x > y {
+  say ("larger=" + x)
+}
