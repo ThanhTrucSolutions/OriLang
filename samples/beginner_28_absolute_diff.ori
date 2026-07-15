@@ -1,0 +1,13 @@
+// Beginner 28 — absolute difference of two numbers (runs on C VM)
+hold a = 12
+hold b = 5
+hold d = a - b
+say ("12-5=" + d)
+when d < 0 {
+  hold d = 0 - d
+}
+say ("abs=" + d)
+hold x = 3
+hold y = 9
+hold z = y - x
+say ("9-3=" + z)
