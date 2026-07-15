@@ -1,0 +1,10 @@
+// Beginner 26 — C/F temperature convert (runs on C VM)
+hold c = 20
+hold f = c * 9 / 5 + 32
+say ("20C=" + f + "F")
+hold f2 = 68
+hold c2 = (f2 - 32) * 5 / 9
+say ("68F=" + c2 + "C")
+when f > 50 {
+  say "warm enough"
+}
