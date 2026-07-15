@@ -1,0 +1,19 @@
+// Beginner 32 — sum a small range (runs on C VM)
+hold total = 0
+hold i = 1
+when i <= 5 {
+  hold total = total + i
+  hold i = i + 1
+}
+say ("sum1to5=" + total)
+hold n = 3
+hold acc = 0
+hold j = 1
+when j <= n {
+  hold acc = acc + j
+  hold j = j + 1
+}
+say ("sum1ton=" + acc)
+when total > acc {
+  say "total is larger"
+}
