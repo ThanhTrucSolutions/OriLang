@@ -1,0 +1,10 @@
+// Golden output for beginner_26_temperature_convert.ori
+// Expected output when run with: ori run samples/beginner_26_temperature_convert.ori
+
+0°C = 32°F
+100°C = 212°F
+37°C = 98.6°F (body temp)
+212°F = 100°C
+32°F = 0°C
+98.6°F = 37°C (body temp)
+Conversion check passed

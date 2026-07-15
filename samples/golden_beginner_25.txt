@@ -1,0 +1,6 @@
+// Golden output for beginner_25_string_join.ori
+// Expected output when run with: ori run samples/beginner_25_string_join.ori
+
+Hello World
+Numbers: 1, 2, 3, 4, 5
+Brand: Nexus-AI
