@@ -1,0 +1,17 @@
+// Beginner 24 — factorial via loop (runs on C VM)
+hold n = 5
+hold i = 1
+hold acc = 1
+when i <= n {
+  hold acc = acc * i
+  hold i = i + 1
+}
+say ("5!=" + acc)
+hold m = 4
+hold j = 1
+hold f = 1
+when j <= m {
+  hold f = f * j
+  hold j = j + 1
+}
+say ("4!=" + f)
