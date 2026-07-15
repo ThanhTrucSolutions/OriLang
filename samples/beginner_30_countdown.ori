@@ -1,0 +1,15 @@
+// Beginner 30 — countdown loop (runs on C VM)
+hold n = 5
+say ("start=" + n)
+when n > 0 {
+  say ("tick=" + n)
+  hold n = n - 1
+}
+say "done"
+hold sum = 0
+hold i = 1
+when i <= 4 {
+  hold sum = sum + i
+  hold i = i + 1
+}
+say ("sum1to4=" + sum)
