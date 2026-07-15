@@ -1,0 +1,12 @@
+// Beginner 24 — factorial (runs on C VM)
+// Computes factorial of n using fold (function definition)
+
+fold factorial n {
+  when n <= 1 { give 1 }
+  give n * factorial (n - 1)
+}
+
+say ("0! = " + str (factorial 0))
+say ("1! = " + str (factorial 1))
+say ("5! = " + str (factorial 5))
+say ("10! = " + str (factorial 10))

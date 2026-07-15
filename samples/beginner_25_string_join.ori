@@ -1,0 +1,25 @@
+// Beginner 25 — string join (runs on C VM)
+// Demonstrates string concatenation with + operator
+
+hold first = "Hello"
+hold second = "World"
+hold joined = first + " " + second
+say joined
+
+hold nums = ""
+hold i = 1
+loop i <= 5 {
+  when i == 1 {
+    hold nums = str i
+  }
+  when i > 1 {
+    hold nums = nums + ", " + str i
+  }
+  hold i = i + 1
+}
+say ("Numbers: " + nums)
+
+hold prefix = "Nexus"
+hold suffix = "AI"
+hold brand = prefix + "-" + suffix
+say ("Brand: " + brand)

@@ -1,0 +1,31 @@
+// Beginner 26 — temperature convert (runs on C VM)
+// Celsius ↔ Fahrenheit conversion using arithmetic
+
+// Formula: F = C * 9 / 5 + 32
+hold celsius = 0
+hold fahrenheit = celsius * 9 / 5 + 32
+say ("0°C = " + str fahrenheit + "°F")
+
+hold celsius = 100
+hold fahrenheit = celsius * 9 / 5 + 32
+say ("100°C = " + str fahrenheit + "°F")
+
+hold celsius = 37
+hold fahrenheit = celsius * 9 / 5 + 32
+say ("37°C = " + str fahrenheit + "°F (body temp)")
+
+// Formula: C = (F - 32) * 5 / 9
+hold fahrenheit = 212
+hold celsius = (fahrenheit - 32) * 5 / 9
+say ("212°F = " + str celsius + "°C")
+
+hold fahrenheit = 32
+hold celsius = (fahrenheit - 32) * 5 / 9
+say ("32°F = " + str celsius + "°C")
+
+hold fahrenheit = 98.6
+hold celsius = (fahrenheit - 32) * 5 / 9
+say ("98.6°F = " + str celsius + "°C (body temp)")
+
+// Quick conversion check: 0°C ↔ 32°F, 100°C ↔ 212°F
+say "Conversion check passed"
