@@ -1,0 +1,14 @@
+// Beginner 34 — repeat a greeting N times (runs on C VM)
+hold n = 3
+hold i = 1
+when i <= n {
+  say ("hello #" + i)
+  hold i = i + 1
+}
+say "done"
+hold m = 2
+hold j = 1
+when j <= m {
+  say ("bye #" + j)
+  hold j = j + 1
+}
