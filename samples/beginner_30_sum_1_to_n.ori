@@ -1,0 +1,9 @@
+// Beginner 30 — sum from 1 to n (wave2)
+hold n = 5
+hold sum = 0
+hold i = 1
+when i <= n {
+  hold sum = sum + i
+  hold i = i + 1
+}
+say ("sum of 1 to " + n + " = " + sum)
