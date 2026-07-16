@@ -1,0 +1,32 @@
+// Intermediate 02 — greatest common divisor via Euclidean algorithm (runs on C VM)
+// Expected output: gcd(48,18)=6 / gcd(100,25)=25
+
+hold a = 48
+hold b = 18
+
+hold x = a
+hold y = b
+
+when y > 0 {
+  hold t = x / y
+  hold r = x - t * y
+  hold x = y
+  hold y = r
+}
+
+say ("gcd(" + a + "," + b + ")=" + x)
+
+hold a2 = 100
+hold b2 = 25
+
+hold x2 = a2
+hold y2 = b2
+
+when y2 > 0 {
+  hold t2 = x2 / y2
+  hold r2 = x2 - t2 * y2
+  hold x2 = y2
+  hold y2 = r2
+}
+
+say ("gcd(" + a2 + "," + b2 + ")=" + x2)

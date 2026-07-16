@@ -1,0 +1,30 @@
+// Intermediate 03 — compute average of a fixed number list (runs on C VM)
+// Expected output: avg(10,20,30,40)=25 / avg(5,15,25)=15
+
+hold nums = [10, 20, 30, 40]
+hold count = 4
+hold sum = 0
+hold idx = 0
+
+when idx < count {
+  hold val = nums[idx]
+  hold sum = sum + val
+  hold idx = idx + 1
+}
+
+hold avg = sum / count
+say ("avg(10,20,30,40)=" + avg)
+
+hold vals = [5, 15, 25]
+hold c2 = 3
+hold s2 = 0
+hold i2 = 0
+
+when i2 < c2 {
+  hold v = vals[i2]
+  hold s2 = s2 + v
+  hold i2 = i2 + 1
+}
+
+hold a2 = s2 / c2
+say ("avg(5,15,25)=" + a2)
