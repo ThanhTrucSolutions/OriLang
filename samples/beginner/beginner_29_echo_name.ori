@@ -1,0 +1,7 @@
+// OriLang Sample: Echo Name
+fn echo(name) {
+    return "Hello, " + name + "!";
+}
+
+let my_name = "Ori Developer";
+print(echo(my_name));

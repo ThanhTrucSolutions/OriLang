@@ -1,0 +1,13 @@
+// OriLang Sample: Greeting based on time
+fn greet(hour) {
+    if (hour < 12) {
+        return "Good morning!";
+    } else if (hour < 18) {
+        return "Good afternoon!";
+    } else {
+        return "Good evening!";
+    }
+}
+
+let time = 14;
+print(greet(time));

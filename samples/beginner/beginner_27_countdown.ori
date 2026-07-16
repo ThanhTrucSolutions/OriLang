@@ -1,0 +1,11 @@
+// OriLang Sample: Countdown
+fn countdown(start) {
+    let current = start;
+    while (current > 0) {
+        print(current);
+        current = current - 1;
+    }
+    print("Liftoff!");
+}
+
+countdown(5);
