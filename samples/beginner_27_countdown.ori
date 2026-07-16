@@ -1,0 +1,9 @@
+// Beginner 27 — countdown loop sample (wave2)
+// Demonstrates countdown using Ori control flow (runs on C VM)
+hold n = 10
+say ("countdown from " + n)
+when n > 0 {
+  say ("T-minus " + n)
+  hold n = n - 1
+}
+say "Liftoff!"
