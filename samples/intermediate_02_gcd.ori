@@ -1,0 +1,24 @@
+// Intermediate — GCD via Euclidean algorithm (runs on C VM)
+// Computes greatest common divisor of two numbers
+hold a = 48
+hold b = 18
+hold x = a
+hold y = b
+when y > 0 {
+  hold r = x - (x / y) * y
+  hold x = y
+  hold y = r
+}
+say ("gcd(" + a + "," + b + ")=" + x)
+
+// Second test
+hold c = 56
+hold d = 98
+hold x2 = c
+hold y2 = d
+when y2 > 0 {
+  hold r2 = x2 - (x2 / y2) * y2
+  hold x2 = y2
+  hold y2 = r2
+}
+say ("gcd(" + c + "," + d + ")=" + x2)

@@ -1,0 +1,33 @@
+// Intermediate — average of numbers (runs on C VM)
+// Computes the arithmetic mean of an array of numbers
+hold xs = [3, 7, 11, 5]
+hold i = 0
+hold sum = 0
+when i < len xs {
+  hold sum = sum + xs[i]
+  hold i = i + 1
+}
+hold avg = sum / len xs
+say ("avg of [3,7,11,5]=" + avg)
+
+// Second test: different set
+hold ys = [10, 20, 30, 40, 50]
+hold j = 0
+hold sum2 = 0
+when j < len ys {
+  hold sum2 = sum2 + ys[j]
+  hold j = j + 1
+}
+hold avg2 = sum2 / len ys
+say ("avg of [10,20,30,40,50]=" + avg2)
+
+// Third test: single element
+hold zs = [42]
+hold k = 0
+hold sum3 = 0
+when k < len zs {
+  hold sum3 = sum3 + zs[k]
+  hold k = k + 1
+}
+hold avg3 = sum3 / len zs
+say ("avg of [42]=" + avg3)

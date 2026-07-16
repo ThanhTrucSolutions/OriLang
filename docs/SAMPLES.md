@@ -9,6 +9,9 @@
 | hold.ori | Variable holding | Beginner |
 | when.ori | Conditional logic | Beginner |
 | string.ori | String operations | Intermediate |
+| intermediate_01_prime.ori | Prime number checker | Intermediate |
+| intermediate_02_gcd.ori | GCD via Euclidean algorithm | Intermediate |
+| intermediate_03_average.ori | Average of array elements | Intermediate |
 
 ## Running Samples
 
