@@ -1,0 +1,8 @@
+// Beginner 32 — greeting with times (wave2)
+hold name = "World"
+hold times = 3
+hold i = 0
+when i < times {
+  say ("Hello " + name + "!")
+  hold i = i + 1
+}
