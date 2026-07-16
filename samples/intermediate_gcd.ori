@@ -1,0 +1,17 @@
+// Intermediate — Euclid's greatest common divisor (runs on C VM)
+// Demonstrates functions, modulo, variable reassignment, and a loop.
+fold gcd a b {
+  loop b != 0 {
+    hold r = a % b
+    a = b
+    b = r
+  }
+
+  give a
+}
+
+hold x = 84
+hold y = 30
+hold result = gcd x y
+
+say ("gcd(" + str x + ", " + str y + ") = " + str result)

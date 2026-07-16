@@ -1,0 +1,28 @@
+// Intermediate — prime-ish check with trial division (runs on C VM)
+// Demonstrates functions, loops, modulo, early returns, and booleans.
+fold is_prime n {
+  when n < 2 { give no }
+
+  hold d = 2
+  loop d * d <= n {
+    when n % d == 0 { give no }
+    d = d + 1
+  }
+
+  give yes
+}
+
+hold a = 29
+hold b = 30
+
+when is_prime a {
+  say (str a + " is prime-ish")
+} else {
+  say (str a + " is composite")
+}
+
+when is_prime b {
+  say (str b + " is prime-ish")
+} else {
+  say (str b + " is composite")
+}

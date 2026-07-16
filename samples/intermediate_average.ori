@@ -1,0 +1,16 @@
+// Intermediate — average of an array (runs on C VM)
+// Demonstrates arrays, indexing, len(), loops, and numeric formatting basics.
+hold scores = [8, 10, 7, 9, 6]
+hold i = 0
+hold total = 0
+
+loop i < len scores {
+  total = total + scores[i]
+  i = i + 1
+}
+
+hold avg = total / len scores
+
+say ("count=" + str (len scores))
+say ("total=" + str total)
+say ("average=" + str avg)
