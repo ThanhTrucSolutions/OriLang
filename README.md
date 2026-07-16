@@ -380,3 +380,5 @@ MIT · MergeOS / ThanhTrucSolutions
    tools/ori.ori  ──►  tools/ori.orb  (compilado por oric)
    tools/ori.c    ──►  ori.exe        (arranque en C — ejecuta orivm tools/ori.orb)
 >>>>>>> 7b874cb (docs: improve README with better structure and clarity #14)
+
+- [Beginner Pitfalls FAQ](docs/BEGINNER_PITFALLS.md) — Common mistakes and how to avoid them
