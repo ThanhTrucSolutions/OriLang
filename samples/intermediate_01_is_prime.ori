@@ -1,0 +1,43 @@
+// Intermediate 01 — primality check (runs on C VM)
+// Checks if a number is prime by testing divisibility
+// Expected output: 7=prime / 12=not-prime
+
+hold n = 7
+hold i = 2
+hold is_prime = true
+
+when i < n {
+  hold rem = n / i
+  hold prod = rem * i
+  when prod == n {
+    hold is_prime = false
+  }
+  hold i = i + 1
+}
+
+when is_prime {
+  say (n + "=prime")
+}
+when !is_prime {
+  say (n + "=not-prime")
+}
+
+hold n2 = 12
+hold j = 2
+hold is_p2 = true
+
+when j < n2 {
+  hold r = n2 / j
+  hold p = r * j
+  when p == n2 {
+    hold is_p2 = false
+  }
+  hold j = j + 1
+}
+
+when is_p2 {
+  say (n2 + "=prime")
+}
+when !is_p2 {
+  say (n2 + "=not-prime")
+}
