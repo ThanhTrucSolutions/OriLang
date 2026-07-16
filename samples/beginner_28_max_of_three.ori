@@ -1,0 +1,12 @@
+// Beginner 28 — max of three numbers (wave2)
+hold a = 7
+hold b = 12
+hold c = 5
+hold max = a
+when b > max {
+  hold max = b
+}
+when c > max {
+  hold max = c
+}
+say ("max of " + a + ", " + b + ", " + c + " is " + max)
