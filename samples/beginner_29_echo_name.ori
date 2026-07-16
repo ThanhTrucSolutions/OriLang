@@ -1,0 +1,5 @@
+// Beginner 29 — echo name (wave2)
+hold name = "OriLang"
+say ("Hello, " + name + "!")
+say ("Your name has " + len name + " characters")
+say ("Echo: " + name)
