@@ -1,0 +1,15 @@
+fold fizzbuzz n {
+  hold i = 1
+  loop i <= n {
+    when i % 15 == 0 {
+      say "FizzBuzz"
+    } else when i % 3 == 0 {
+      say "Fizz"
+    } else when i % 5 == 0 {
+      say "Buzz"
+    } else {
+      say i
+    }
+    hold i = i + 1
+  }
+}
