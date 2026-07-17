@@ -1,0 +1,22 @@
+// intermediate_03_average.ori
+// Calculates the average of an array of numbers.
+
+fn calculate_average(numbers) {
+    let len = numbers.length()
+    if len == 0 {
+        return 0
+    }
+    
+    let sum = 0
+    for num in numbers {
+        sum = sum + num
+    }
+    
+    return sum / len
+}
+
+let scores = [85, 92, 78, 90, 88]
+let empty = []
+
+print("Average of scores: " + calculate_average(scores))
+print("Average of empty array: " + calculate_average(empty))

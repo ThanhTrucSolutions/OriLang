@@ -1,0 +1,19 @@
+// intermediate_02_gcd.ori
+// Calculates the Greatest Common Divisor of two numbers.
+
+fn gcd(a, b) {
+    while b != 0 {
+        let temp = b
+        b = a % b
+        a = temp
+    }
+    return a
+}
+
+let num1 = 48
+let num2 = 18
+print("GCD of " + num1 + " and " + num2 + " is: " + gcd(num1, num2))
+
+let num3 = 101
+let num4 = 10
+print("GCD of " + num3 + " and " + num4 + " is: " + gcd(num3, num4))
