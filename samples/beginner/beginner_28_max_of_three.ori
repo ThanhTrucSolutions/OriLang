@@ -1,0 +1,9 @@
+// OriLang Sample: Max of Three
+fn max_of_three(a, b, c) {
+    let max = a;
+    if (b > max) { max = b; }
+    if (c > max) { max = c; }
+    return max;
+}
+
+print("Max is: " + max_of_three(15, 42, 8));

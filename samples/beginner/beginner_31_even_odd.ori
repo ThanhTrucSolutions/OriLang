@@ -1,0 +1,10 @@
+// OriLang Sample: Even or Odd
+fn check_even_odd(n) {
+    if (n % 2 == 0) {
+        return "Even";
+    }
+    return "Odd";
+}
+
+let num = 7;
+print(num + " is " + check_even_odd(num));

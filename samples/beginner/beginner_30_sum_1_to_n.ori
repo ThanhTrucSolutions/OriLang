@@ -1,0 +1,11 @@
+// OriLang Sample: Sum from 1 to N
+fn sum_to_n(n) {
+    let sum = 0;
+    for i in 1..n {
+        sum = sum + i;
+    }
+    return sum;
+}
+
+let target = 10;
+print("Sum from 1 to " + target + " is " + sum_to_n(target));
