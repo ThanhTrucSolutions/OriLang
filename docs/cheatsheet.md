@@ -1,284 +1,231 @@
-# OriLang Cheatsheet — C VM Idioms
+# OriLang Cheatsheet
 
-Quick reference for OriLang programs targeting the **C VM** (uses `hold` / `when` / `say`).
+Ori is a parenthesis-free, C-VM-hosted programming language with self-hosting compiler.
 
-## Basic Syntax
+---
 
-### Hello World
-```orilang
-say ("Hello, World!")
+## Variables
+
+```ori
+hold name = "OriLang"
+hold version = 1.0
+hold is_fun = true
+hold list = [1, 2, 3]
 ```
 
-### Variables (use `hold`)
-```orilang
-hold x = 10
-hold name = "Alice"
-hold pi = 3.14
+| Keyword | Meaning |
+|---------|---------|
+| `hold` | Declare a mutable variable |
+| `hold x = expr` | Declare + assign |
+
+Variables are **mutable** by default — reassign with `=`:
+
+```ori
+hold count = 0
+count = count + 1
 ```
 
-### Comments
-```orilang
-// Single line comment — only // style
+---
+
+## Functions
+
+### Definition — `fold`
+
+```ori
+fold add a b {
+    give a + b
+}
+
+fold greet name {
+    say "Hello, " + name
+}
 ```
 
-## Data Types
+| Keyword | Meaning |
+|---------|---------|
+| `fold` | Define a function (`fold fnName param1 param2 { body }`) |
+| `give` | Return a value |
+| `give` w/o expr | Return void |
 
-### Supported types
-```orilang
-hold integer = 42
-hold float = 3.14
-hold string = "Hello"
+### Calling
+
+Arguments are **juxtaposed** (space-separated):
+
+```ori
+add 3 5          # → 8
+greet "World"
 ```
 
-### Arrays
-```orilang
-hold numbers = [1, 2, 3, 4, 5]
+Legacy parens also accepted:
+
+```ori
+add(3, 5)
 ```
 
-Note: C VM supports arrays but may not support mixed types or `null`.
+### Scoping
 
-## Operators
+Functions are **not closures** — no nested functions.
 
-### Arithmetic
-```orilang
-hold sum = 5 + 3       // 8
-hold diff = 10 - 4     // 6
-hold product = 6 * 7   // 42
-hold quotient = 15 / 3 // 5 (integer division!)
-hold remainder = 17 - 5 * 3 // manual remainder
-```
-
-⚠️ **Division truncates** on the C VM. For exact division with remainder:
-```orilang
-hold a = 15
-hold b = 2
-hold q = a / b    // 7
-hold r = a - q * b  // 1
-```
-
-### Comparison
-```orilang
-5 == 5    // true
-5 != 3    // true
-5 > 3     // true
-5 < 10    // true
-```
+---
 
 ## Control Flow
 
-### When (replaces `if`)
-```orilang
-when x > 10 {
-    say ("Greater than 10")
-}
+### Conditional — `when` / `else when` / `else`
 
-when x > 5 {
-    say ("Greater than 5")
-}
-```
-
-### When-Else (chained)
-```orilang
-when x > 10 {
-    say ("big")
-}
-
-when x > 5 {
-    say ("medium")
-} !when {
-    say ("small")
+```ori
+when x > 50 {
+    say "Large"
+} else when x > 10 {
+    say "Medium"
+} else {
+    say "Small"
 }
 ```
 
-### Loops (while-style)
-```orilang
+### Loop — `loop`
+
+```ori
 hold i = 0
-hold i = i + 1
-when i < 5 {
-    say (i)
-    hold i = i + 1
+loop i < 5 {
+    say i
+    i = i + 1
 }
 ```
 
-Note: C VM doesn't have a `for` loop. Use manual counter + `when` for looping.
+---
 
-## Functions (simple pattern)
+## Operators
 
-```orilang
-hold greet = fn (name) {
-    say ("Hello, " + name)
-}
+| Category | Operators |
+|----------|-----------|
+| Arithmetic | `+` `-` `*` `/` `%` |
+| Comparison | `==` `!=` `<` `>` `<=` `>=` |
+| Logical | and, or, not (words, `&&` `||` `!` also accepted) |
+| Assignment | `=` (reassign) |
+| String | `+` (concatenation) |
 
-greet ("World")      // Hello, World
-```
+Numbers are IEEE-754 doubles. Booleans are **not** numbers — `true` / `false` (also `yes` / `no`).
 
-### Function with return
-```orilang
-hold add = fn (a, b) {
-    a + b
-}
+---
 
-hold result = add (5, 3)
-say (result)         // 8
-```
+## Data Structures
 
-Note: The last expression is the return value. No explicit `return` keyword needed.
+### Arrays
 
-## String Operations
-
-```orilang
-hold greeting = "Hello" + " " + "World"
-say (greeting)
-
-// Length
-hold n = len greeting   // 11
-
-// Access by index not directly supported — use len + manual iteration
-```
-
-## Array Operations
-
-```orilang
+```ori
 hold arr = [10, 20, 30]
-
-// Access
-hold first = arr[0]    // 10
-
-// Length
-hold n = len arr       // 3
-
-// Push
-arr push (40)          // [10, 20, 30, 40]
+say arr[0]         // 10
+arr[1] = 99
+push(arr, 40)      // [10, 99, 30, 40]
 ```
 
-## Common Idioms (10 patterns)
+| Built-in | Description |
+|----------|-------------|
+| `len(arr)` | Length of array or string |
+| `push(arr, val)` | Append element |
 
-### 1. Countdown loop
-```orilang
-hold i = 5
-say (i)
-hold i = i - 1
-when i >= 1 {
-    say (i)
-    hold i = i - 1
+---
+
+## Built-in Functions
+
+| Function | Description |
+|----------|-------------|
+| `say expr` | Print to stdout |
+| `print(expr)` | Alias for `say` |
+| `str expr` / `string(expr)` | Convert to string |
+| `num expr` / `number(expr)` | Convert to number |
+| `len arr` / `len "str"` | Length of array or string |
+| `push(arr, val)` | Append to array |
+| `http_get url` | Fetch URL content (shells out to `curl`) |
+
+---
+
+## Comments
+
+```ori
+# Line comment
+// Also line comment
+```
+
+---
+
+## Standard Patterns
+
+### Fibonacci
+
+```ori
+fold fib n {
+    when n < 2 { give n }
+    give fib (n - 1) + fib (n - 2)
 }
+
+say fib 10   // 55
 ```
 
-### 2. Sum a range
-```orilang
-hold total = 0
+### Greet
+
+```ori
+fold greet name {
+    say "Hello, " + name
+}
+
+greet "OriLang"
+```
+
+### FizzBuzz
+
+```ori
 hold i = 1
-hold total = total + i
-hold i = i + 1
-when i <= 10 {
-    hold total = total + i
-    hold i = i + 1
-}
-say (total)            // 55
-```
-
-### 3. Max of two
-```orilang
-hold a = 7
-hold b = 3
-hold mx = a
-when b > mx {
-    hold mx = b
-}
-say (mx)              // 7
-```
-
-### 4. Even/Odd check
-```orilang
-hold n = 42
-hold r = n - (n / 2) * 2
-when r == 0 {
-    say ("even")
-} !when {
-    say ("odd")
-}
-```
-
-### 5. Accumulate with `hold` redeclaration
-```orilang
-hold total = 0
-hold total = total + 10
-hold total = total + 20
-hold total = total + 30
-say (total)           // 60
-```
-
-### 6. Truthiness check
-```orilang
-hold flag = 1
-when flag {
-    say ("truthy")    // runs
-}
-
-hold zero = 0
-when zero {
-    say ("never")     // doesn't run (0 is falsy)
-}
-```
-
-### 7. Fibonacci sequence
-```orilang
-hold a = 0
-hold b = 1
-say (a)
-say (b)
-hold c = a + b
-say (c)
-hold a = b
-hold b = c
-hold c = a + b
-say (c)
-```
-
-### 8. Factorial
-```orilang
-hold n = 5
-hold result = 1
-hold result = result * n
-hold n = n - 1
-when n > 1 {
-    hold result = result * n
-    hold n = n - 1
-}
-say (result)          // 120
-```
-
-### 9. Filter with when-guard
-```orilang
-hold xs = [1, 2, 3, 4, 5]
-hold i = 0
-when i < len xs {
-    hold v = xs[i]
-    when v > 3 {
-        say (v)       // 4, 5
+loop i <= 20 {
+    when i % 15 == 0 {
+        say "FizzBuzz"
+    } else when i % 3 == 0 {
+        say "Fizz"
+    } else when i % 5 == 0 {
+        say "Buzz"
+    } else {
+        say i
     }
-    hold i = i + 1
+    i = i + 1
 }
 ```
 
-### 10. String to number conversion pattern
-```orilang
-hold raw = "42"
-// C VM: manual parsing by character
-hold digits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+### Read from API
+
+```ori
+hold data = http_get "https://api.example.com/data"
+say data
 ```
 
-## Notes
+---
 
-- **Use `say`, not `print`** — `print()` is not available on the C VM
-- **Use `hold`, not `let`** — C VM doesn't support `let`
-- **Use `when`, not `if`** — `if`/`else` syntax is not supported
-- **Variables cannot be reassigned with `=`** — redeclare with `hold` to update
-- **Division is integer truncation** — no floating-point on the C VM
-- **All lines execute top-to-bottom** — no hoisting or forward declarations
-- **Check your syntax** — only the validator in the project can confirm correctness
+## Quick Reference
 
-## References
+```
+# Variable
+hold x = 42
 
-- [Common Beginner Pitfalls](common_pitfalls.md) — mistakes to avoid
-- [All Beginner Samples](../samples/) — runnable examples with `ori run`
+# Function
+fold add a b { give a + b }
+
+# Call
+add 3 5
+
+# Conditional
+when x > 0 { ... } else { ... }
+
+# Loop
+loop x < 10 { x = x + 1 }
+
+# Array
+[1, 2, 3]
+arr[i]
+push(arr, 4)
+
+# Return
+give value
+```
+
+---
+
+See [samples/](/samples) for runnable examples.
