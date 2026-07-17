@@ -1,64 +1,59 @@
-# OriLang Cheatsheet
+# OriLang Cheatsheet — C VM Idioms
 
-Quick reference guide for OriLang programming language.
+Quick reference for OriLang programs targeting the **C VM** (uses `hold` / `when` / `say`).
 
 ## Basic Syntax
 
 ### Hello World
 ```orilang
-print("Hello, World!")
+say ("Hello, World!")
 ```
 
-### Variables
+### Variables (use `hold`)
 ```orilang
-let x = 10
-let name = "Alice"
-let pi = 3.14
-let isActive = true
+hold x = 10
+hold name = "Alice"
+hold pi = 3.14
 ```
 
 ### Comments
 ```orilang
-// Single line comment
-
-/* Multi-line
-   comment */
+// Single line comment — only // style
 ```
 
 ## Data Types
 
-### Primitive Types
+### Supported types
 ```orilang
-let integer = 42
-let float = 3.14
-let string = "Hello"
-let boolean = true
-let nothing = null
+hold integer = 42
+hold float = 3.14
+hold string = "Hello"
 ```
 
-### Collections
+### Arrays
 ```orilang
-// Arrays
-let numbers = [1, 2, 3, 4, 5]
-let mixed = [1, "two", 3.0, true]
-
-// Objects/Maps
-let person = {
-    name: "Bob",
-    age: 30,
-    active: true
-}
+hold numbers = [1, 2, 3, 4, 5]
 ```
+
+Note: C VM supports arrays but may not support mixed types or `null`.
 
 ## Operators
 
 ### Arithmetic
 ```orilang
-let sum = 5 + 3       // 8
-let diff = 10 - 4     // 6
-let product = 6 * 7   // 42
-let quotient = 15 / 3 // 5
-let remainder = 17 % 5 // 2
+hold sum = 5 + 3       // 8
+hold diff = 10 - 4     // 6
+hold product = 6 * 7   // 42
+hold quotient = 15 / 3 // 5 (integer division!)
+hold remainder = 17 - 5 * 3 // manual remainder
+```
+
+⚠️ **Division truncates** on the C VM. For exact division with remainder:
+```orilang
+hold a = 15
+hold b = 2
+hold q = a / b    // 7
+hold r = a - q * b  // 1
 ```
 
 ### Comparison
@@ -67,253 +62,223 @@ let remainder = 17 % 5 // 2
 5 != 3    // true
 5 > 3     // true
 5 < 10    // true
-5 >= 5    // true
-3 <= 5    // true
-```
-
-### Logical
-```orilang
-true && false  // false
-true || false  // true
-!true          // false
 ```
 
 ## Control Flow
 
-### If-Else
+### When (replaces `if`)
 ```orilang
-if x > 10 {
-    print("Greater than 10")
-} else if x > 5 {
-    print("Greater than 5")
-} else {
-    print("5 or less")
+when x > 10 {
+    say ("Greater than 10")
+}
+
+when x > 5 {
+    say ("Greater than 5")
 }
 ```
 
-### Loops
-
-#### While Loop
+### When-Else (chained)
 ```orilang
-let i = 0
-while i < 5 {
-    print(i)
-    i = i + 1
+when x > 10 {
+    say ("big")
+}
+
+when x > 5 {
+    say ("medium")
+} !when {
+    say ("small")
 }
 ```
 
-#### For Loop
+### Loops (while-style)
 ```orilang
-for i in 0..5 {
-    print(i)
-}
-
-// Array iteration
-for item in [1, 2, 3, 4, 5] {
-    print(item)
+hold i = 0
+hold i = i + 1
+when i < 5 {
+    say (i)
+    hold i = i + 1
 }
 ```
 
-## Functions
+Note: C VM doesn't have a `for` loop. Use manual counter + `when` for looping.
 
-### Basic Function
+## Functions (simple pattern)
+
 ```orilang
-fn greet(name) {
-    print("Hello, " + name)
+hold greet = fn (name) {
+    say ("Hello, " + name)
 }
 
-greet("World")
+greet ("World")      // Hello, World
 ```
 
-### Function with Return
+### Function with return
 ```orilang
-fn add(a, b) {
-    return a + b
+hold add = fn (a, b) {
+    a + b
 }
 
-let result = add(5, 3)  // 8
+hold result = add (5, 3)
+say (result)         // 8
 ```
 
-### Arrow Functions
-```orilang
-let multiply = (a, b) => a * b
-let square = x => x * x
-```
+Note: The last expression is the return value. No explicit `return` keyword needed.
 
-## Classes and Objects
+## String Operations
 
-### Class Definition
 ```orilang
-class Person {
-    fn init(name, age) {
-        this.name = name
-        this.age = age
-    }
-    
-    fn greet() {
-        print("Hi, I'm " + this.name)
-    }
-    
-    fn birthday() {
-        this.age = this.age + 1
-    }
-}
-```
+hold greeting = "Hello" + " " + "World"
+say (greeting)
 
-### Creating Instances
-```orilang
-let person = Person("Alice", 25)
-person.greet()        // Hi, I'm Alice
-person.birthday()
-print(person.age)     // 26
-```
+// Length
+hold n = len greeting   // 11
 
-### Inheritance
-```orilang
-class Student extends Person {
-    fn init(name, age, grade) {
-        super.init(name, age)
-        this.grade = grade
-    }
-    
-    fn study() {
-        print(this.name + " is studying")
-    }
-}
+// Access by index not directly supported — use len + manual iteration
 ```
 
 ## Array Operations
 
 ```orilang
-let arr = [1, 2, 3, 4, 5]
+hold arr = [10, 20, 30]
 
 // Access
-let first = arr[0]
+hold first = arr[0]    // 10
 
 // Length
-let len = arr.length()
+hold n = len arr       // 3
 
-// Common methods
-arr.push(6)           // Add to end
-arr.pop()             // Remove from end
-arr.map(x => x * 2)   // Transform each element
-arr.filter(x => x > 2) // Filter elements
-arr.reduce((a, b) => a + b, 0) // Reduce to single value
+// Push
+arr push (40)          // [10, 20, 30, 40]
 ```
 
-## String Operations
+## Common Idioms (10 patterns)
 
+### 1. Countdown loop
 ```orilang
-let str = "Hello, World"
-
-// Concatenation
-let greeting = "Hello" + " " + "World"
-
-// Length
-let len = str.length()
-
-// Substring
-let sub = str.substring(0, 5)  // "Hello"
-
-// Split
-let parts = str.split(", ")    // ["Hello", "World"]
-
-// Case
-let upper = str.toUpperCase()  // "HELLO, WORLD"
-let lower = str.toLowerCase()  // "hello, world"
-```
-
-## Error Handling
-
-```orilang
-try {
-    // Code that might throw
-    let result = riskyOperation()
-} catch error {
-    print("Error: " + error)
-} finally {
-    print("Cleanup")
+hold i = 5
+say (i)
+hold i = i - 1
+when i >= 1 {
+    say (i)
+    hold i = i - 1
 }
 ```
 
-## Modules
-
-### Exporting
+### 2. Sum a range
 ```orilang
-// math.ori
-export fn add(a, b) {
-    return a + b
+hold total = 0
+hold i = 1
+hold total = total + i
+hold i = i + 1
+when i <= 10 {
+    hold total = total + i
+    hold i = i + 1
+}
+say (total)            // 55
+```
+
+### 3. Max of two
+```orilang
+hold a = 7
+hold b = 3
+hold mx = a
+when b > mx {
+    hold mx = b
+}
+say (mx)              // 7
+```
+
+### 4. Even/Odd check
+```orilang
+hold n = 42
+hold r = n - (n / 2) * 2
+when r == 0 {
+    say ("even")
+} !when {
+    say ("odd")
+}
+```
+
+### 5. Accumulate with `hold` redeclaration
+```orilang
+hold total = 0
+hold total = total + 10
+hold total = total + 20
+hold total = total + 30
+say (total)           // 60
+```
+
+### 6. Truthiness check
+```orilang
+hold flag = 1
+when flag {
+    say ("truthy")    // runs
 }
 
-export let PI = 3.14159
-```
-
-### Importing
-```orilang
-import { add, PI } from "./math"
-import * as math from "./math"
-
-let sum = add(5, 3)
-let area = PI * r * r
-```
-
-## Common Patterns
-
-### Conditional Expression
-```orilang
-let max = a > b ? a : b
-```
-
-### Default Parameters
-```orilang
-fn greet(name = "Guest") {
-    print("Hello, " + name)
+hold zero = 0
+when zero {
+    say ("never")     // doesn't run (0 is falsy)
 }
 ```
 
-### Destructuring
+### 7. Fibonacci sequence
 ```orilang
-let [first, second, ...rest] = [1, 2, 3, 4, 5]
-let { name, age } = person
+hold a = 0
+hold b = 1
+say (a)
+say (b)
+hold c = a + b
+say (c)
+hold a = b
+hold b = c
+hold c = a + b
+say (c)
 ```
 
-### Spread Operator
+### 8. Factorial
 ```orilang
-let arr1 = [1, 2, 3]
-let arr2 = [...arr1, 4, 5]  // [1, 2, 3, 4, 5]
+hold n = 5
+hold result = 1
+hold result = result * n
+hold n = n - 1
+when n > 1 {
+    hold result = result * n
+    hold n = n - 1
+}
+say (result)          // 120
 ```
 
-## Built-in Functions
-
+### 9. Filter with when-guard
 ```orilang
-// I/O
-print(value)           // Output to console
-input(prompt)          // Read user input
-
-// Type conversion
-int(value)             // Convert to integer
-float(value)           // Convert to float
-string(value)          // Convert to string
-bool(value)            // Convert to boolean
-
-// Utilities
-len(collection)        // Get length
-type(value)            // Get type name
-range(start, end)      // Generate range
+hold xs = [1, 2, 3, 4, 5]
+hold i = 0
+when i < len xs {
+    hold v = xs[i]
+    when v > 3 {
+        say (v)       // 4, 5
+    }
+    hold i = i + 1
+}
 ```
 
-## Tips
+### 10. String to number conversion pattern
+```orilang
+hold raw = "42"
+// C VM: manual parsing by character
+hold digits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+```
 
-- OriLang is dynamically typed
-- Variables are block-scoped with `let`
-- Functions are first-class citizens
-- Array and object literals use familiar syntax
-- Semicolons are optional
-- Indentation matters for readability but braces define blocks
+## Notes
 
-## Resources
+- **Use `say`, not `print`** — `print()` is not available on the C VM
+- **Use `hold`, not `let`** — C VM doesn't support `let`
+- **Use `when`, not `if`** — `if`/`else` syntax is not supported
+- **Variables cannot be reassigned with `=`** — redeclare with `hold` to update
+- **Division is integer truncation** — no floating-point on the C VM
+- **All lines execute top-to-bottom** — no hoisting or forward declarations
+- **Check your syntax** — only the validator in the project can confirm correctness
 
-- [Full Documentation](docs/README.md)
-- [Language Specification](docs/SPEC.md)
-- [Examples](examples/)
-- [GitHub Repository](https://github.com/ThanhTrucSolutions/OriLang)
+## References
+
+- [Common Beginner Pitfalls](common_pitfalls.md) — mistakes to avoid
+- [All Beginner Samples](../samples/) — runnable examples with `ori run`

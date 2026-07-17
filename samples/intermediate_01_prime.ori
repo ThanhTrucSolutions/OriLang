@@ -1,0 +1,40 @@
+// Intermediate — prime checker (runs on C VM)
+// Checks if a number is prime by trial division up to sqrt(n)
+hold n = 29
+hold i = 2
+hold is_prime = 1
+when i * i <= n {
+  hold q = n / i
+  hold r = n - q * i
+  when r == 0 {
+    hold is_prime = 0
+  }
+  hold i = i + 1
+}
+say ("n=" + n)
+when is_prime == 1 {
+  say (n + " is prime")
+}
+when is_prime == 0 {
+  say (n + " is not prime")
+}
+
+// Second test: composite number
+hold m = 15
+hold j = 2
+hold prime_m = 1
+when j * j <= m {
+  hold q2 = m / j
+  hold r2 = m - q2 * j
+  when r2 == 0 {
+    hold prime_m = 0
+  }
+  hold j = j + 1
+}
+say ("n=" + m)
+when prime_m == 1 {
+  say (m + " is prime")
+}
+when prime_m == 0 {
+  say (m + " is not prime")
+}
