@@ -1,0 +1,32 @@
+
+Find:
+```javascript
+["str_join", function(args) {
+    if (!args[0] || args[0].t!== V_ARR) return str("");
+    var a = args[0].v, sep = (args[1] && args[1].t === V_STR)? args[1].v : "";
+    var parts = [];
+    for (var i = 0; i < a.length; i++) parts.push(a[i].t === V_STR? a[i].v : "");
+    return str(parts.join(sep));
+}],
+```
+
+Replace with:
+```javascript
+["str_join", function(args) {
+    if (!args[0] || args[0].t!== V_ARR) return str("");
+    var a = args[0].v, sep = (args[1] && args[1].t === V_STR)? args[1].v : "";
+    var parts = [];
+    for (var i = 0; i < a.length; i++) {
+        if (a[i].t === V_STR) {
+            parts.push(a[i].v);
+        } else if (a[i].t === V_NUM) {
+            parts.push(String(a[i].v));
+        } else {
+            parts.push("");
+        }
+    }
+    return str(parts.join(sep));
+}],
+```
+
+This change ensures that non-string elements in the array are converted to strings before joining, which resolves the issue of joining arrays with non-string elements.
