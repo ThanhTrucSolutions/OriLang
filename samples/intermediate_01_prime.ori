@@ -1,0 +1,23 @@
+// intermediate_01_prime.ori
+// Checks if a number is a prime (or prime-ish) using a simple loop.
+
+fn is_prime(n) {
+    if n <= 1 {
+        return false
+    }
+    // simple check up to n-1
+    for i in 2..n {
+        if n % i == 0 {
+            return false
+        }
+    }
+    return true
+}
+
+let test1 = 7
+let test2 = 10
+let test3 = 23
+
+print("Is " + test1 + " prime? " + is_prime(test1))
+print("Is " + test2 + " prime? " + is_prime(test2))
+print("Is " + test3 + " prime? " + is_prime(test3))
