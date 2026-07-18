@@ -1,13 +1,7 @@
-// OriLang Sample: Greeting based on time
-fn greet(hour) {
-    if (hour < 12) {
-        return "Good morning!";
-    } else if (hour < 18) {
-        return "Good afternoon!";
-    } else {
-        return "Good evening!";
-    }
+// Beginner 32 — greeting times N (wave2)
+hold n = 3
+hold i = 1
+when i <= n {
+  say ("good morning #" + i)
+  hold i = i + 1
 }
-
-let time = 14;
-print(greet(time));
