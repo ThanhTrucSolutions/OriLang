@@ -1,0 +1,10 @@
+// Beginner 40 — multiply table row (runs on C VM)
+hold n = 3
+hold i = 1
+say ("table for " + n)
+when i <= 5 {
+  hold prod = n * i
+  say (n + "x" + i + "=" + prod)
+  hold i = i + 1
+}
+say "done"
