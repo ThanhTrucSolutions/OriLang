@@ -1,0 +1,15 @@
+// Beginner 41 — absolute value (runs on C VM)
+hold x = -7
+say ("x=" + x)
+hold abs = x
+when x < 0 {
+  hold abs = 0 - x
+}
+say ("abs=" + abs)
+hold y = 5
+hold absy = y
+when y < 0 {
+  hold absy = 0 - y
+}
+say ("y=" + y)
+say ("absy=" + absy)
