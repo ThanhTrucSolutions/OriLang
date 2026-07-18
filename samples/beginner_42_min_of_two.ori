@@ -1,0 +1,17 @@
+// Beginner 42 — min of two numbers (runs on C VM)
+hold a = 8
+hold b = 3
+say ("a=" + a)
+say ("b=" + b)
+hold min = a
+when b < min {
+  hold min = b
+}
+say ("min=" + min)
+hold c = 12
+hold d = 12
+hold min2 = c
+when d < min2 {
+  hold min2 = d
+}
+say ("min2=" + min2)
