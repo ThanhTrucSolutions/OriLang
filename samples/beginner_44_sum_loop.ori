@@ -1,0 +1,18 @@
+// Beginner 44 — sum 1..n with a simple loop (runs on C VM)
+hold n = 5
+hold i = 1
+hold sum = 0
+when i <= n {
+  hold sum = sum + i
+  hold i = i + 1
+}
+say ("n=" + n)
+say ("sum=" + sum)
+hold n2 = 3
+hold i2 = 1
+hold sum2 = 0
+when i2 <= n2 {
+  hold sum2 = sum2 + i2
+  hold i2 = i2 + 1
+}
+say ("sum2=" + sum2)
