@@ -1,0 +1,17 @@
+// Beginner 43 — max of two numbers (runs on C VM)
+hold a = 5
+hold b = 11
+say ("a=" + a)
+say ("b=" + b)
+hold max = a
+when b > max {
+  hold max = b
+}
+say ("max=" + max)
+hold c = 7
+hold d = 7
+hold max2 = c
+when d > max2 {
+  hold max2 = d
+}
+say ("max2=" + max2)
