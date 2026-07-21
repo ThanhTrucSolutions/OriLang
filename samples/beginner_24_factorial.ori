@@ -1,4 +1,5 @@
 // Beginner 24 — factorial via loop (runs on C VM)
+// Fixes #45
 hold n = 5
 hold i = 1
 hold acc = 1
