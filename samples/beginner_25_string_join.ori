@@ -1,4 +1,5 @@
 // Beginner 25 — string join / say parts (runs on C VM)
+// Fixes #46
 hold first = "Hello"
 hold name = "Ori"
 hold msg = first + ", " + name
