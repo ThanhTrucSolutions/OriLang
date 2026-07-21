@@ -370,6 +370,30 @@ end
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for build prerequisites (Windows MSVC / Linux / macOS), first steps (`ori create` / `ori run`), and MergeOS bounty workflow.
 
+### Bắt đầu nhanh
+
+Cài đặt bước đầu (cần Visual Studio C++ tools / MSVC trên Windows):
+
+```bat
+build.cmd
+```
+
+Trên Linux/macOS:
+
+```sh
+sh build.sh
+```
+
+Sau đó:
+
+```bat
+ori create myapp           :: tạo dự án mới
+ori run    myapp           :: biên dịch + chạy trên native C VM
+ori dev    myapp           :: hot reload: tự động chạy lại khi sửa code
+ori build  myapp release   :: đóng gói sản phẩm (mã hóa .orx)
+ori doctor                 :: kiểm tra bộ công cụ
+```
+
 ---
 
 ## License
