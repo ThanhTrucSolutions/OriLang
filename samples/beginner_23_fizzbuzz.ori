@@ -1,4 +1,5 @@
 // Beginner 23 — fizzbuzz-style counts (runs on C VM)
+// Fixes #44
 hold n = 1
 when n < 16 {
   hold s = ""
