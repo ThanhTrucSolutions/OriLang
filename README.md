@@ -28,6 +28,7 @@
 - [Limitaciones](#limitaciones)
 - [Bounties de MergeOS](#bounties-de-mergeos)
 - [Licencia](#licencia)
+- [Beginner Learning Path](docs/BEGINNER_LEARNING_PATH.md)
 
 ---
 
@@ -174,6 +175,15 @@ sh build.sh
 ./ori build samples/mobile-android
 ```
 
+### Testing
+
+Run golden tests to verify sample output:
+
+```sh
+chmod +x golden_test.sh
+./golden_test.sh
+```
+
 ---
 
 ## Platforms & sample apps
@@ -243,12 +253,16 @@ The host calls `render()` to get the spec and `dispatch(ev, arg)` on events. App
 | `samples/` | Platform sample projects (`ori/main.ori` + `*.meta`) |
 | `docs/TOOLCHAIN.md` | Architecture & build guide |
 | `docs/diagrams/` | Architecture + workflow SVGs |
+| `tests/` | Golden test results |
+| `golden_test.sh` | Golden test script |
 
 ---
 
 ## Language summary
 
 See [docs/CHEATSHEET.md](docs/CHEATSHEET.md) for a comprehensive language cheatsheet!
+
+For beginners, start with our [Beginner Learning Path](docs/BEGINNER_LEARNING_PATH.md) - a structured guide with 10 progressive samples.
 
 | Feature | Syntax |
 | --- | --- |

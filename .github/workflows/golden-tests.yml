@@ -1,0 +1,39 @@
+name: Golden Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  golden-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc make
+        
+    - name: Build OriLang
+      run: |
+        cd core
+        gcc -O2 -o orivm orivm.c
+        
+    - name: Compile Ori CLI
+      run: |
+        cd tools
+        ../core/orivm oric.orb ori.ori ori.orb
+        
+    - name: Run golden tests
+      run: |
+        chmod +x golden_test.sh
+        ./golden_test.sh
+        
+    - name: Verify test results
+      run: |
+        echo "All golden tests passed!"
