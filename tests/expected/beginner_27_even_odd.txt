@@ -1,0 +1,5 @@
+n=7
+2n=14
+greater than five
+less than ten
+4/2=2

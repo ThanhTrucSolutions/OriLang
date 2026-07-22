@@ -1,0 +1,5 @@
+n=6
+double=12
+double is over ten
+half=6
+half matches n
