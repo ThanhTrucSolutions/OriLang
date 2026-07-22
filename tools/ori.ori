@@ -199,16 +199,25 @@ fold compile_orb proj m_entry proj_name {
 // ===== DOCTOR =====
 fold cmd_doctor {
     say("ori doctor  (toolchain 0.9.1)")
+    hold errors = 0
     when exists(VM_EXE) { say("  [ok] native VM      " + VM_EXE) }
     else {
         say("  [!!] native VM missing: " + VM_EXE)
         say("       Run build.cmd (Windows) or sh build.sh first.")
-        give 1
+        errors = errors + 1
     }
     when exists(COMPILER) { say("  [ok] Ori compiler   tools/oric.orb (self-hosted)") }
     else {
         say("  [!!] Ori compiler missing: " + COMPILER)
-        give 1
+        say("       Run build.cmd (Windows) or sh build.sh first.")
+        errors = errors + 1
+    }
+    hold cli_orb = jp(jp(HOME, "tools"), "ori.orb")
+    when exists(cli_orb) { say("  [ok] CLI runtime    tools/ori.orb") }
+    else {
+        say("  [!!] CLI runtime missing: " + cli_orb)
+        say("       Run build.cmd (Windows) or sh build.sh first.")
+        errors = errors + 1
     }
     hold wasm = jp(TOOLS_WEB, "orivm.wasm")
     when exists(wasm) { say("  [ok] web runtime    tools/web/orivm.wasm") }
@@ -216,6 +225,10 @@ fold cmd_doctor {
     hold stdlib = jp(jp(HOME, "core"), "test_stdlib_basics.ori")
     when exists(stdlib) { say("  [ok] stdlib fixture core/test_stdlib_basics.ori") }
     else { say("  [..] stdlib fixture not present") }
+    when errors > 0 {
+        say("  Toolchain incomplete. Run build.cmd or sh build.sh to fix.")
+        give 1
+    }
     say("  Toolchain ready.  Try: ori version")
     give 0
 }
