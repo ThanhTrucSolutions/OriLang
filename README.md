@@ -15,6 +15,7 @@
 
 ## 📋 Contenidos
 
+- [Beginner's Guide](BEGINNER_GUIDE.md)
 - [Características destacadas](#características-destacadas)
 - [Capturas de pantalla](#capturas-de-pantalla)
 - [Flujo de trabajo](#flujo-de-trabajo)
