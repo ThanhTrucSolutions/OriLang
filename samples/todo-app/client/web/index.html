@@ -34,6 +34,24 @@ h1 { font-size: 2rem; margin: 0 0 20px; font-weight: 800; }
 .footer { padding: 12px 16px; font-size: 13px; color: #6b7280; border-top: 1px solid #23272f; }
 .error { background: #2d1a1a; color: #e06c75; border-radius: 8px; padding: 12px 16px;
   margin-bottom: 12px; font-size: 14px; }
+
+/* Mobile optimizations: narrower screens */
+@media (max-width: 420px) {
+  #app { padding: 20px 12px 48px; }
+  h1 { font-size: 1.6rem; margin-bottom: 16px; }
+  .add-row { flex-direction: column; }
+  .add-row input { font-size: 16px; padding: 13px; } /* prevent iOS zoom on focus */
+  .add-row button { width: 100%; min-height: 48px; font-size: 15px; }
+  .filters { gap: 4px; }
+  .filters button { flex: 1; min-height: 40px; font-size: 12px; padding: 0 8px; }
+  .todo-item { padding: 12px 12px; gap: 10px; }
+  .todo-item input[type=checkbox] { width: 22px; height: 22px; }
+  .todo-item .label { font-size: 14px; }
+  .todo-item .del { width: 40px; height: 40px; font-size: 18px; }
+  .empty { padding: 24px 16px; font-size: 13px; }
+  .footer { padding: 10px 12px; font-size: 12px; }
+  .error { padding: 10px 12px; font-size: 13px; }
+}
 </style>
 </head>
 <body>
