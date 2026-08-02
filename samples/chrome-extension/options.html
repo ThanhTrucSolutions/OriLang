@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ori VM Host — Options</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #181a20;
+      color: #e6e9f0;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      padding: 24px;
+      min-width: 400px;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #f0f4ff;
+    }
+    .subtitle {
+      color: #9aa0aa;
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+    .section {
+      background: #1e2129;
+      border: 1px solid #2a2e38;
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+    }
+    .section h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #c8cdd7;
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+      color: #9aa0aa;
+    }
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .field input[type="text"],
+    .field input[type="number"] {
+      flex: 1;
+      background: #0f1116;
+      border: 1px solid #2a2e38;
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: #e6e9f0;
+      font-size: 13px;
+      outline: none;
+    }
+    .field input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #6c8cff;
+    }
+    .field input:focus {
+      border-color: #6c8cff;
+    }
+    .btn {
+      background: #2a2e38;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      color: #e6e9f0;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #363b47; }
+    .btn-primary {
+      background: #4f6ef7;
+      color: #fff;
+      font-weight: 500;
+    }
+    .btn-primary:hover { background: #6c8cff; }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .status {
+      color: #9aa0aa;
+      font-size: 12px;
+      margin-top: 6px;
+      min-height: 1.4em;
+    }
+    .status.success { color: #4caf7d; }
+    .status.error { color: #e05454; }
+    pre.log {
+      background: #0f1116;
+      border: 1px solid #2a2e38;
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #c8cdd7;
+      max-height: 160px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Ori VM Host</h1>
+  <div class="subtitle">Chrome extension options — host-line settings</div>
+
+  <!-- ── General Settings ─────────────────────────────────────────── -->
+  <div class="section">
+    <h2>General</h2>
+    <div class="field">
+      <label for="endpoint">Endpoint</label>
+      <input type="text" id="endpoint" placeholder="http://localhost:5151" />
+    </div>
+    <div class="field">
+      <label for="appName">App name</label>
+      <input type="text" id="appName" placeholder="My Ori App" />
+    </div>
+    <div class="field">
+      <label for="pollInterval">Poll interval (seconds)</label>
+      <input type="number" id="pollInterval" min="5" max="300" />
+    </div>
+    <div class="field">
+      <label>
+        <input type="checkbox" id="autoReload" />
+        Auto-reload on Ori file change
+      </label>
+    </div>
+  </div>
+
+  <!-- ── Notifications ────────────────────────────────────────────── -->
+  <div class="section">
+    <h2>Notifications</h2>
+    <div class="field">
+      <label>
+        <input type="checkbox" id="notifyOnAlarm" />
+        Show notification when alarm fires
+      </label>
+    </div>
+    <div class="field">
+      <label>
+        <input type="checkbox" id="notifyOnError" />
+        Show notification on Ori VM error
+      </label>
+    </div>
+  </div>
+
+  <!-- ── Buttons ──────────────────────────────────────────────────── -->
+  <div class="btn-row">
+    <button class="btn btn-primary" id="saveBtn">Save Settings</button>
+    <button class="btn" id="resetBtn">Reset to Defaults</button>
+    <button class="btn" id="testBtn">Test Host Call</button>
+  </div>
+  <div id="status" class="status"></div>
+
+  <!-- ── Host-line Log ────────────────────────────────────────────── -->
+  <div class="section">
+    <h2>Host-line Activity</h2>
+    <pre class="log" id="log">[Ori VM Host] Waiting for host-line calls…</pre>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
